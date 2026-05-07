@@ -4,7 +4,8 @@
 //
 // (Filename kept as gemini.js to avoid touching imports elsewhere.)
 
-const API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY;
+const rawKey = import.meta.env.VITE_OPENROUTER_API_KEY;
+const API_KEY = typeof rawKey === 'string' ? rawKey.trim() : '';
 const ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions';
 
 // Free models on OpenRouter (no credit card required).
@@ -16,7 +17,7 @@ const TEXT_MODEL   = 'openai/gpt-oss-120b:free';
 export const NATIONALMUSEUM_CONTEXT =
   "The visitor is at Nationalmuseum in Stockholm, Sweden: Sweden's national museum of fine art and applied arts (paintings, sculpture, works on paper, design, jewellery, ceramics, textiles, and major Nordic and European works). Prefer framing that fits that setting unless the scanned object clearly belongs elsewhere.";
 
-export const aiEnabled = Boolean(API_KEY);
+export const aiEnabled = API_KEY.length > 0;
 
 async function callOpenRouter({ messages, model, maxTokens = 600, temperature = 0.7 }) {
   if (!API_KEY) {

@@ -245,20 +245,33 @@ export function ScanningScreen({ onBack, onComplete }) {
     let cancelled = false;
     async function startCamera() {
       if (!navigator.mediaDevices?.getUserMedia) return;
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
+      const tryStreams = [
+        () => navigator.mediaDevices.getUserMedia({
           video: { facingMode: { ideal: 'environment' } },
           audio: false,
-        });
-        if (cancelled) {
-          stream.getTracks().forEach(t => t.stop());
+        }),
+        () => navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user', width: { ideal: 1280 } },
+          audio: false,
+        }),
+        () => navigator.mediaDevices.getUserMedia({ video: true, audio: false }),
+      ];
+      for (const tryGet of tryStreams) {
+        if (cancelled) return;
+        try {
+          const stream = await tryGet();
+          if (cancelled) {
+            stream.getTracks().forEach(t => t.stop());
+            return;
+          }
+          streamRef.current = stream;
+          setCameraReady(true);
           return;
+        } catch {
+          /* try next */
         }
-        streamRef.current = stream;
-        setCameraReady(true);
-      } catch {
-        setCameraReady(false);
       }
+      setCameraReady(false);
     }
     startCamera();
     return () => {
@@ -276,7 +289,7 @@ export function ScanningScreen({ onBack, onComplete }) {
   }, [cameraReady]);
 
   // Wait until the video has actual frame dimensions (videoWidth > 0).
-  const waitForVideoReady = (timeoutMs = 2000) => new Promise((resolve) => {
+  const waitForVideoReady = (timeoutMs = 4000) => new Promise((resolve) => {
     const start = Date.now();
     const tick = () => {
       const v = videoRef.current;
@@ -306,26 +319,32 @@ export function ScanningScreen({ onBack, onComplete }) {
     setPhase('scanning');
     setErrMsg('');
 
-    if (cameraReady && aiEnabled) {
-      try {
-        const ready = await waitForVideoReady();
-        if (!ready) throw new Error('Camera not ready yet. Wait a moment.');
-        const b64 = captureFrameBase64();
-        if (!b64) throw new Error('Could not capture frame.');
-        const obj = await recognizeObject(b64, 'image/jpeg');
-        setPhase('done');
-        setTimeout(() => onComplete(obj), 700);
-        return;
-      } catch (e) {
-        setErrMsg(e.message || 'Recognition failed.');
-        setPhase('error');
-        setTimeout(() => { setPhase('idle'); }, 2200);
-        return;
-      }
+    if (!aiEnabled) {
+      setTimeout(() => setPhase('done'), 1200);
+      setTimeout(() => onComplete(null), 2100);
+      return;
     }
 
-    setTimeout(() => setPhase('done'), 1200);
-    setTimeout(() => onComplete(null), 2100);
+    if (!cameraReady) {
+      setErrMsg('Camera is unavailable. Allow camera access and reload, or try another device.');
+      setPhase('error');
+      setTimeout(() => { setPhase('idle'); }, 3800);
+      return;
+    }
+
+    try {
+      const ready = await waitForVideoReady();
+      if (!ready) throw new Error('Camera not ready yet. Wait a moment.');
+      const b64 = captureFrameBase64();
+      if (!b64) throw new Error('Could not capture frame.');
+      const obj = await recognizeObject(b64, 'image/jpeg');
+      setPhase('done');
+      setTimeout(() => onComplete(obj), 700);
+    } catch (e) {
+      setErrMsg(e.message || 'Recognition failed.');
+      setPhase('error');
+      setTimeout(() => { setPhase('idle'); }, 2200);
+    }
   };
 
   const messages = {
