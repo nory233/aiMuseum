@@ -348,8 +348,18 @@ export function ScanningScreen({ onBack, onComplete }) {
   };
 
   const messages = {
-    idle:     { main: cameraReady ? 'Tap to scan' : 'Tap to scan (demo)', sub: cameraReady ? 'Hold steady while AI identifies the object' : 'No camera detected. Using demo object.' },
-    scanning: { main: cameraReady ? 'Analyzing...' : 'Scanning...', sub: cameraReady ? 'Sending to AI vision model' : 'Analysing object details' },
+    idle: {
+      main: !aiEnabled
+        ? 'Tap to scan (demo)'
+        : (cameraReady ? 'Tap to scan' : 'Camera needed'),
+      sub: !aiEnabled
+        ? 'No API key — a sample object after scan.'
+        : (cameraReady ? 'Hold steady while AI identifies the object' : 'Allow camera access, then reload the page.'),
+    },
+    scanning: {
+      main: cameraReady ? 'Analyzing...' : 'Waiting...',
+      sub: aiEnabled ? 'Sending photo to AI vision model' : 'Using demo identification',
+    },
     done:     { main: 'Object identified!', sub: 'Opening object details...' },
     error:    { main: 'Scan failed', sub: errMsg || 'Try again' },
   };

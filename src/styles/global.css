@@ -77,6 +77,7 @@ body {
   min-height: 0;
 }
 
+@media (max-width: 480px) {
   body {
     padding-left: max(0px, var(--safe-left));
     padding-right: max(0px, var(--safe-right));
