@@ -1,0 +1,18 @@
+Project folder name: aiMuseum
+===============================
+
+Your code now exists here:
+
+  C:\Users\This PC\Desktop\Hackathon\aiMuseum
+
+The original folder may still be named "AI-Museum" if the editor had it open (Windows blocks rename while in use).
+
+What to do:
+1. Close Cursor / VS Code.
+2. Open "aiMuseum" as your project folder (or delete "AI-Museum" after you confirm aiMuseum is complete).
+3. Copy .env into aiMuseum if it is missing (your API key).
+4. In aiMuseum: npm install && npm run dev
+
+package.json "name" is: aimuseum
+
+Video: public/immersive-ambient.mp4 plays in Immersive mode. Replace it with your own MP4 (e.g. museum B-roll). Current file is a small CC0 sample for demo only.
