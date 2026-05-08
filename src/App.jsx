@@ -21,6 +21,18 @@ const DEMO_OBJECT = {
   summary: 'A smoothing stone used to press and finish cloth after washing in medieval Nordic households.',
 };
 
+function normalizeScannedObject(payload) {
+  if (!payload) return { ...DEMO_OBJECT };
+  return {
+    name: typeof payload.name === 'string' && payload.name.trim() ? payload.name.trim() : 'Unidentified',
+    period: typeof payload.period === 'string' && payload.period.trim() ? payload.period.trim() : 'Unknown',
+    context: typeof payload.context === 'string' ? payload.context.trim() : '',
+    summary: typeof payload.summary === 'string' ? payload.summary.trim() : '',
+    scanVideoObjectUrl: payload.scanVideoObjectUrl,
+    scanPreviewDataUrl: payload.scanPreviewDataUrl,
+  };
+}
+
 export default function App() {
   const [screen, setScreen] = useState('home');
   const [history, setHistory] = useState([]);
@@ -54,6 +66,17 @@ export default function App() {
     setScreen('home');
   };
 
+  const commitScanResult = (payload) => {
+    const next = normalizeScannedObject(payload ?? null);
+    setObject((prev) => {
+      const prevVid = prev?.scanVideoObjectUrl;
+      const nextVid = next.scanVideoObjectUrl;
+      if (prevVid && prevVid !== nextVid) URL.revokeObjectURL(prevVid);
+      return next;
+    });
+    go('mode');
+  };
+
   return (
     <div className="app-shell" role="main" aria-label="Nationalmuseum AI Guide">
       <StatusBar />
@@ -64,8 +87,7 @@ export default function App() {
                                     setup={setup} />}
       {screen === 'navigation' && <NavigationScreen          onBack={back} onNext={() => go('object')} />}
       {screen === 'object'     && <ObjectDetailScreen        onBack={back} onScan={() => go('scanning')} />}
-      {screen === 'scanning'   && <ScanningScreen            onBack={back}
-                                    onComplete={(obj) => { setObject(obj || DEMO_OBJECT); go('mode'); }} />}
+      {screen === 'scanning'   && <ScanningScreen            onBack={back} onComplete={commitScanResult} />}
       {screen === 'mode'       && <ModeSelectionScreen       onBack={back}
                                     object={object}
                                     onQuick={() => go('quick')}

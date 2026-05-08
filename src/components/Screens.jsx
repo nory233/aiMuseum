@@ -232,6 +232,16 @@ export function ObjectDetailScreen({ onBack, onScan }) {
   );
 }
 
+function pickVideoRecorderMimeType() {
+  if (typeof MediaRecorder === 'undefined' || !MediaRecorder.isTypeSupported) return '';
+  const opts = [
+    'video/webm;codecs=vp9',
+    'video/webm;codecs=vp8',
+    'video/webm',
+  ];
+  return opts.find(MediaRecorder.isTypeSupported) || '';
+}
+
 // Screen 6: Scanning (camera + OpenRouter vision, with fake-scan fallback)
 export function ScanningScreen({ onBack, onComplete }) {
   const [phase, setPhase] = useState('idle'); // idle | scanning | done | error
@@ -239,6 +249,8 @@ export function ScanningScreen({ onBack, onComplete }) {
   const [cameraReady, setCameraReady] = useState(false);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
+  const recorderRef = useRef(null);
+  const recorderChunksRef = useRef([]);
 
   // Acquire the camera stream once on mount.
   useEffect(() => {
@@ -276,6 +288,9 @@ export function ScanningScreen({ onBack, onComplete }) {
     startCamera();
     return () => {
       cancelled = true;
+      const mr = recorderRef.current;
+      if (mr && mr.state !== 'inactive') mr.stop();
+      recorderRef.current = null;
       streamRef.current?.getTracks().forEach(t => t.stop());
     };
   }, []);
@@ -300,7 +315,7 @@ export function ScanningScreen({ onBack, onComplete }) {
     tick();
   });
 
-  const captureFrameBase64 = () => {
+  const captureFrame = () => {
     const video = videoRef.current;
     if (!video || !video.videoWidth) return null;
     const canvas = document.createElement('canvas');
@@ -311,7 +326,48 @@ export function ScanningScreen({ onBack, onComplete }) {
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-    return dataUrl.split(',')[1];
+    const base64 = dataUrl.split(',')[1];
+    return { base64, dataUrl };
+  };
+
+  const startScanRecording = () => {
+    recorderChunksRef.current = [];
+    const stream = streamRef.current;
+    const mime = pickVideoRecorderMimeType();
+    if (!stream || !mime) return null;
+    try {
+      const mr = new MediaRecorder(stream, { mimeType: mime });
+      mr.ondataavailable = (e) => {
+        if (e.data.size) recorderChunksRef.current.push(e.data);
+      };
+      mr.start(250);
+      recorderRef.current = mr;
+      return mr;
+    } catch {
+      return null;
+    }
+  };
+
+  const finishScanRecording = () => new Promise((resolve) => {
+    const mr = recorderRef.current;
+    recorderRef.current = null;
+    if (!mr || mr.state === 'inactive') {
+      resolve(null);
+      return;
+    }
+    mr.onstop = () => {
+      const chunks = recorderChunksRef.current;
+      recorderChunksRef.current = [];
+      const type = (mr.mimeType && mr.mimeType.split(';')[0]) || 'video/webm';
+      const blob = new Blob(chunks, { type });
+      resolve(blob.size > 0 ? URL.createObjectURL(blob) : null);
+    };
+    mr.stop();
+  });
+
+  const abortScanRecording = async () => {
+    const url = await finishScanRecording();
+    if (url) URL.revokeObjectURL(url);
   };
 
   const handleTap = async () => {
@@ -332,15 +388,24 @@ export function ScanningScreen({ onBack, onComplete }) {
       return;
     }
 
+    startScanRecording();
+
     try {
       const ready = await waitForVideoReady();
       if (!ready) throw new Error('Camera not ready yet. Wait a moment.');
-      const b64 = captureFrameBase64();
-      if (!b64) throw new Error('Could not capture frame.');
-      const obj = await recognizeObject(b64, 'image/jpeg');
+      const frame = captureFrame();
+      if (!frame?.base64) throw new Error('Could not capture frame.');
+      const obj = await recognizeObject(frame.base64, 'image/jpeg');
+      const scanVideoObjectUrl = await finishScanRecording();
       setPhase('done');
-      setTimeout(() => onComplete(obj), 700);
+      const payload = {
+        ...obj,
+        scanPreviewDataUrl: frame.dataUrl,
+        ...(scanVideoObjectUrl ? { scanVideoObjectUrl } : {}),
+      };
+      setTimeout(() => onComplete(payload), 700);
     } catch (e) {
+      await abortScanRecording();
       setErrMsg(e.message || 'Recognition failed.');
       setPhase('error');
       setTimeout(() => { setPhase('idle'); }, 2200);
@@ -412,11 +477,25 @@ export function ModeSelectionScreen({ onBack, object, onQuick, onDetailed, onImm
       <AppBar title="Object recognised" onBack={onBack} />
       <div className="scroll-area">
         <div className="recognized-card">
-          <div className="recognized-thumb"><StoneIcon size={44} /></div>
+          <div className="recognized-thumb" style={{ overflow: 'hidden' }}>
+            {object?.scanPreviewDataUrl
+              ? (
+                  <img
+                    src={object.scanPreviewDataUrl}
+                    alt=""
+                    style={{
+                      width: '100%', height: '100%', objectFit: 'cover', display: 'block',
+                    }}
+                  />
+                )
+              : (
+                  <StoneIcon size={44} />
+                )}
+          </div>
           <div>
-            <div className="recognized-title">{object?.name || 'Glättsten'}</div>
-            <div className="recognized-sub">{object?.context || 'Stone used in textile work'}</div>
-            <div className="recognized-tag">{object?.summary || 'Used to smooth cloth after washing'}</div>
+            <div className="recognized-title">{object?.name || 'Nationalmuseum artefact'}</div>
+            <div className="recognized-sub">{object?.context || 'Gallery object'}</div>
+            <div className="recognized-tag">{object?.summary || ''}</div>
           </div>
         </div>
         <div className="section-eye" style={{ marginBottom: 12 }}>Choose how you want to learn</div>
@@ -472,8 +551,9 @@ function useAIExplanation({ object, mode, setup, fallback }) {
         setLoading(false);
       });
     return () => { cancelled = true; };
+    // Intentionally depend on text fields tied to identification, not previews or blob URLs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [object?.name, mode, setup?.interest, setup?.style]);
+  }, [object?.name, object?.summary, object?.context, mode, setup?.interest, setup?.style]);
 
   return { data, loading, error };
 }
@@ -594,6 +674,11 @@ export function DetailedExplanationScreen({ onBack, onImmersive, object, setup }
 export function ImmersiveModeScreen({ onBack, onContinue, object, setup }) {
   const videoRef = useRef(null);
   const [playing, setPlaying] = useState(false);
+  const scanVideoUrl = object?.scanVideoObjectUrl;
+  const scanStillUrl = object?.scanPreviewDataUrl;
+  const hasScanVideo = Boolean(scanVideoUrl);
+  const hasScanStill = Boolean(scanStillUrl);
+
   const fallback = {
     character: 'Medieval textile worker, 1200 CE',
     lines: [
@@ -607,22 +692,23 @@ export function ImmersiveModeScreen({ onBack, onContinue, object, setup }) {
 
   useEffect(() => {
     const el = videoRef.current;
-    if (!el) return;
+    if (!el || !(el instanceof HTMLVideoElement)) return;
     if (playing) {
       el.play().catch(() => {});
     } else {
       el.pause();
     }
-  }, [playing]);
+  }, [playing, hasScanVideo, scanStillUrl]);
 
   const togglePlay = () => setPlaying(p => !p);
 
   const replay = () => {
     const el = videoRef.current;
-    if (el) el.currentTime = 0;
+    if (!(el instanceof HTMLVideoElement)) return;
+    el.currentTime = 0;
     setPlaying(true);
     queueMicrotask(() => {
-      videoRef.current?.play().catch(() => {});
+      videoRef.current?.play?.().catch(() => {});
     });
   };
 
@@ -631,39 +717,79 @@ export function ImmersiveModeScreen({ onBack, onContinue, object, setup }) {
     onBack();
   };
 
+  const showVideoControls = hasScanVideo || !hasScanStill;
+  const mediaBadge = hasScanVideo ? 'YOUR SCAN' : hasScanStill ? 'SCAN SNAP' : 'AMBIENT';
+  const immersiveLabel = hasScanVideo || hasScanStill ? 'Your scan' : 'Ambient backdrop';
+
   return (
     <div className="screen" style={{ background: 'var(--dark2)' }}>
       <AppBar title="Immersive Mode" onBack={onBack} />
       <div className="scroll-area" style={{ background: 'var(--cream)', paddingTop: 16 }}>
-        <span className="immersive-tag">Historical scene</span>
+        <span className="immersive-tag">{immersiveLabel}</span>
         <div className="media-placeholder">
-          <video
-            ref={videoRef}
-            className="immersive-video"
-            src="/immersive-ambient.mp4"
-            playsInline
-            loop
-            muted
-            preload="auto"
-            aria-label="Ambient scene video"
-          />
+          {hasScanVideo && (
+            <video
+              key={scanVideoUrl}
+              ref={videoRef}
+              className="immersive-video"
+              src={scanVideoUrl}
+              playsInline
+              loop
+              muted
+              preload="auto"
+              aria-label="Video recorded while you scanned this object"
+            />
+          )}
+          {!hasScanVideo && hasScanStill && (
+            <img
+              className="immersive-video"
+              src={scanStillUrl}
+              alt="Frame captured from your scan"
+            />
+          )}
+          {!hasScanVideo && !hasScanStill && (
+            <video
+              ref={videoRef}
+              className="immersive-video"
+              src="/immersive-ambient.mp4"
+              playsInline
+              loop
+              muted
+              preload="auto"
+              aria-label="Neutral ambient backdrop"
+            />
+          )}
           <div className="media-play-overlay">
-            <button type="button" className="play-btn" onClick={togglePlay} aria-label={playing ? 'Pause' : 'Play scene'}>
-              {playing
-                ? (
-                    <span style={{ display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'center' }}>
-                      <span style={{ width: 4, height: 14, background: 'white', borderRadius: 1 }} />
-                      <span style={{ width: 4, height: 14, background: 'white', borderRadius: 1 }} />
-                    </span>
-                  )
-                : <div className="play-icon" />}
+            <button
+              type="button"
+              className="play-btn"
+              onClick={togglePlay}
+              disabled={!showVideoControls}
+              style={{ opacity: showVideoControls ? 1 : 0.35 }}
+              aria-label={playing ? 'Pause' : 'Play scene'}
+              aria-disabled={!showVideoControls}
+            >
+              {!showVideoControls
+                ? <div className="play-icon" style={{ opacity: 0.4 }} />
+                : playing
+                  ? (
+                      <span style={{ display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'center' }}>
+                        <span style={{ width: 4, height: 14, background: 'white', borderRadius: 1 }} />
+                        <span style={{ width: 4, height: 14, background: 'white', borderRadius: 1 }} />
+                      </span>
+                    )
+                  : <div className="play-icon" />}
             </button>
             <div className="media-label">{character}</div>
           </div>
-          <div className="media-live-badge">LIVE SCENE</div>
+          <div className="media-live-badge">{mediaBadge}</div>
         </div>
         <p style={{ fontSize: 11, color: 'var(--stone)', marginBottom: 12, padding: '0 4px' }}>
-          Video is a neutral ambient loop for your visit at Nationalmuseum Stockholm. The dialogue below follows the object you scanned.
+          {hasScanVideo
+            ? 'Video is captured from your camera while you scanned, so what you hear matches what you were looking at.'
+            : hasScanStill
+              ? 'Your browser could not save a clip, so immersive mode shows the exact frame sent for identification. Dialogue still follows what the AI inferred from that scan.'
+              : 'Video is optional ambient backdrop. The dialogue follows the detected object.'}
         </p>
         {loading ? (
           <div className="dialogue-card"><LoadingShimmer lines={3} /></div>
@@ -681,8 +807,12 @@ export function ImmersiveModeScreen({ onBack, onContinue, object, setup }) {
           </p>
         )}
         <div className="row" style={{ marginBottom: 12 }}>
-          <button type="button" className="btn btn-ctrl" onClick={replay}>Replay</button>
-          <button type="button" className="btn btn-ctrl" onClick={togglePlay}>{playing ? 'Pause' : 'Play'}</button>
+          <button type="button" className="btn btn-ctrl" onClick={replay} disabled={!showVideoControls}>
+            Replay
+          </button>
+          <button type="button" className="btn btn-ctrl" onClick={togglePlay} disabled={!showVideoControls}>
+            {playing ? 'Pause' : 'Play'}
+          </button>
           <button type="button" className="btn btn-ctrl" onClick={stopAndExit}>Exit</button>
         </div>
       </div>

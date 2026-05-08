@@ -56,10 +56,36 @@ async function callOpenRouter({ messages, model, maxTokens = 600, temperature = 
 
 // Extract a JSON object from a possibly-noisy response (free models often add prose).
 function extractJSON(text) {
-  try { return JSON.parse(text); } catch {}
-  const match = text.match(/\{[\s\S]*\}/);
-  if (match) {
-    try { return JSON.parse(match[0]); } catch {}
+  if (!text || typeof text !== 'string') return null;
+  let s = text.trim();
+  const fence = s.match(/^```(?:json)?\s*([\s\S]*?)```$/im);
+  if (!fence && s.includes('```')) {
+    const inner = s.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    if (inner) s = inner[1].trim();
+  } else if (fence) {
+    s = fence[1].trim();
+  }
+  try {
+    return JSON.parse(s);
+  } catch {}
+
+  const start = s.indexOf('{');
+  if (start === -1) return null;
+  let depth = 0;
+  for (let i = start; i < s.length; i++) {
+    const c = s[i];
+    if (c === '{') depth++;
+    else if (c === '}') {
+      depth--;
+      if (depth === 0) {
+        const slice = s.slice(start, i + 1);
+        try {
+          return JSON.parse(slice);
+        } catch {
+          return null;
+        }
+      }
+    }
   }
   return null;
 }
@@ -68,13 +94,17 @@ function extractJSON(text) {
 export async function recognizeObject(imageBase64, mimeType = 'image/jpeg') {
   const prompt = `${NATIONALMUSEUM_CONTEXT}
 
-You are its curator-facing vision assistant: identify the historical or cultural object in this photograph (likely Nationalmuseum holdings or displays).
+You are a vision assistant for gallery visitors. Look ONLY at THIS photograph and describe what is actually visible.
+Do not assume the object is Nordic, medieval, or textile-related unless the image clearly shows that.
+Do not copy any example names or categories from this prompt - pick a label that matches the photograph.
+If you cannot see a clear object, say "Unidentified".
+
 Respond with ONLY a JSON object, no prose, no markdown fences. Exact shape:
 {
-  "name": "<short object name, e.g. 'Glättsten' or 'Roman amphora'>",
-  "period": "<rough period, e.g. '1100-1500 CE' or 'Unknown'>",
-  "context": "<one short phrase, e.g. 'Textile craft tool'>",
-  "summary": "<one sentence describing what it is and what it was used for>"
+  "name": "<short English name for what you see, 2-6 words>",
+  "period": "<rough period such as '1800s' or 'Unknown' if unsure>",
+  "context": "<one short phrase: type of thing, e.g. 'Portrait painting', 'Silver tableware'>",
+  "summary": "<one sentence: what it is and what it was for, grounded in visible details>"
 }
 Use plain ASCII in all string values: hyphens for date ranges, no emoji, no en dash or em dash.
 If the image clearly does not show a plausible museum artefact or artwork, set name to "Unidentified" and explain briefly in summary.`;
@@ -91,11 +121,19 @@ If the image clearly does not show a plausible museum artefact or artwork, set n
       },
     ],
     maxTokens: 800,
-    temperature: 0.4,
+    temperature: 0.55,
   });
 
   const parsed = extractJSON(text);
-  if (parsed && parsed.name) return parsed;
+  if (parsed && typeof parsed.name === 'string') {
+    const name = parsed.name.trim();
+    return {
+      name: name || 'Unidentified',
+      period: typeof parsed.period === 'string' && parsed.period.trim() ? parsed.period.trim() : 'Unknown',
+      context: typeof parsed.context === 'string' ? parsed.context.trim() : '',
+      summary: typeof parsed.summary === 'string' ? parsed.summary.trim() : text.slice(0, 200),
+    };
+  }
   return { name: 'Unidentified', period: 'Unknown', context: '', summary: text.slice(0, 200) };
 }
 
