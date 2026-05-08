@@ -751,7 +751,7 @@ export function ImmersiveModeScreen({ onBack, onContinue, object, setup }) {
             <video
               ref={videoRef}
               className="immersive-video"
-              src="/immersive-ambient.mp4"
+              src={`${import.meta.env.BASE_URL}immersive-ambient.mp4`}
               playsInline
               loop
               muted

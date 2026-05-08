@@ -1,34 +1,33 @@
-# Publishes the Vite production build (dist/) to the gh-pages branch.
-# Live URL: https://nory233.github.io/aiMuseum/
+# GitHub Pages on many repos still uses Source = main branch / (root).
+# Root index.html is only a redirect into docs/. The built app lives in docs/
+# with base URL /aiMuseum/docs/ so asset paths resolve correctly.
 #
-# Repo Settings → Pages → Build and deployment:
-#   Source: "Deploy from a branch"
-#   Branch: gh-pages  /folder: / (root)
+# Live site: https://nory233.github.io/aiMuseum/ (redirects to …/aiMuseum/docs/)
 #
-# Optional: Secrets → Actions → VITE_OPENROUTER_API_KEY (never commit keys)
-#
-# (The older actions/deploy-pages flow only works when Source is "GitHub Actions";
-# if Source is "main" / root, GitHub serves this repo's source index.html and the
-# app breaks because /src/main.jsx is not available on the host.)
-name: Deploy GitHub Pages
+# Do not pass VITE_OPENROUTER_API_KEY into this build: the output is committed to
+# git and would leak the key. Use .env locally for development only.
+name: Publish site to docs
 
 on:
   push:
     branches: [main]
-  workflow_dispatch:
+    paths-ignore:
+      - 'docs/**'
 
 permissions:
   contents: write
 
 concurrency:
-  group: github-pages-publish
+  group: publish-docs
   cancel-in-progress: true
 
 jobs:
-  build-and-publish:
+  publish-docs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -37,14 +36,24 @@ jobs:
 
       - run: npm ci
 
-      - name: Build production site
+      - name: Production build
         run: npm run build
-        env:
-          VITE_OPENROUTER_API_KEY: ${{ secrets.VITE_OPENROUTER_API_KEY }}
 
-      - name: Push dist to gh-pages branch
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./dist
-          enable_jekyll: false
+      - name: Sync dist into docs/
+        run: |
+          rm -rf docs
+          mkdir -p docs
+          cp -r dist/* docs/
+          mv docs/app.html docs/index.html
+
+      - name: Commit and push docs/
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs
+          if git diff --staged --quiet; then
+            echo "No changes under docs/"
+            exit 0
+          fi
+          git commit -m "chore: update published site in docs [skip ci]"
+          git push
