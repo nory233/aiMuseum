@@ -14,11 +14,12 @@ import {
   ContinueRouteScreen,
 } from './components/Screens.jsx';
 
+/** Shown only when AI is unavailable (hosted build or demo scan). Not a museum identification. */
 const DEMO_OBJECT = {
-  name: 'Glättsten',
-  period: '1100-1500 CE',
-  context: 'Textile craft tool',
-  summary: 'A smoothing stone used to press and finish cloth after washing in medieval Nordic households.',
+  name: 'Demo object',
+  period: '',
+  context: 'AI offline sample',
+  summary: 'This is placeholder content because no API key is available in this build.',
 };
 
 function normalizeScannedObject(payload) {

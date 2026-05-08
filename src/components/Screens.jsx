@@ -575,9 +575,9 @@ function LoadingShimmer({ lines = 3 }) {
 export function QuickExplanationScreen({ onBack, onImmersive, object, setup }) {
   const fallback = {
     bullets: [
-      'This object is called a glättsten, a smoothing stone.',
-      'It was used in textile work to smooth cloth after washing.',
-      'It helped make fabric softer and more even, a small but essential household tool.',
+      'Add VITE_OPENROUTER_API_KEY to a .env file and run npm run dev for live identification and explanations.',
+      'The public site on GitHub Pages is shipped without a key so your secret is not exposed in downloaded JavaScript.',
+      'You can still tap through the flow here to preview layout, camera, and immersive layout in demo mode.',
     ],
   };
   const { data, loading, error } = useAIExplanation({ object, mode: 'quick', setup, fallback });
@@ -590,7 +590,7 @@ export function QuickExplanationScreen({ onBack, onImmersive, object, setup }) {
         <div className="exhibit-img" style={{ aspectRatio: '3/2' }}>
           <StoneIcon size={90} />
           <div style={{ position: 'absolute', top: 10, right: 10 }}>
-            <span className="tag-pill">{object?.name || 'Glättsten'}</span>
+            <span className="tag-pill">{object?.name || 'Demo object'}</span>
           </div>
         </div>
         <div className="card" style={{ marginBottom: 12 }}>
@@ -622,14 +622,14 @@ export function QuickExplanationScreen({ onBack, onImmersive, object, setup }) {
 export function DetailedExplanationScreen({ onBack, onImmersive, object, setup }) {
   const fallback = {
     paragraphs: [
-      'A glättsten is a smoothing stone used in textile production. After cloth was washed, it could be pressed and rubbed with the stone to improve its surface, making it feel softer and more finished.',
-      'Though simple, this tool reflects the importance of textile care in everyday historical life. It required skill and patience, and was often passed between generations.',
+      'This build is running without an OpenRouter API key, so explanations are not personalised from the AI.',
+      'For a real visit, run the project locally with .env configured, or host a small backend that holds the key securely instead of putting it in frontend code.',
     ],
     meta: {
-      period: '1100-1500',
-      context: 'Textile craft',
-      function: 'Smoothing cloth',
-      importance: 'Everyday household use',
+      period: '-',
+      context: 'Demo mode',
+      function: '-',
+      importance: '-',
     },
   };
   const { data, loading, error } = useAIExplanation({ object, mode: 'detailed', setup, fallback });
@@ -641,7 +641,7 @@ export function DetailedExplanationScreen({ onBack, onImmersive, object, setup }
       <AppBar title="Detailed explanation" onBack={onBack} />
       <div className="scroll-area">
         <div className="section-eye" style={{ marginBottom: 4 }}>Object study</div>
-        <div className="section-title" style={{ marginBottom: 14 }}>{object?.name || 'Glättsten'}</div>
+        <div className="section-title" style={{ marginBottom: 14 }}>{object?.name || 'Demo object'}</div>
         <div className="card" style={{ marginBottom: 14 }}>
           {loading ? <LoadingShimmer lines={5} /> : paragraphs.map((p, i) => (
             <p key={i} className="body-para" style={{ marginTop: i > 0 ? 12 : 0 }}>{p}</p>
@@ -680,10 +680,10 @@ export function ImmersiveModeScreen({ onBack, onContinue, object, setup }) {
   const hasScanStill = Boolean(scanStillUrl);
 
   const fallback = {
-    character: 'Medieval textile worker, 1200 CE',
+    character: 'Museum visitor (demo)',
     lines: [
-      '"I smooth my cloth with this stone after washing it. I press it across the fabric to make it softer and more even."',
-      '"Without this, the cloth would stay rough. It\'s simple work, but it makes a big difference."',
+      '"Without an API key, the guide cannot invent a historical voice tailored to what you scanned."',
+      '"Run the app locally with your key to hear first-person dialogue generated for each object."',
     ],
   };
   const { data, loading, error } = useAIExplanation({ object, mode: 'immersive', setup, fallback });
