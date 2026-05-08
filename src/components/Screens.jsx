@@ -60,14 +60,9 @@ export function HomeScreen({ onNext, onOpenApiKey }) {
         )}
       </div>
       <StickyBottom>
-        <div className="row" style={{ alignItems: 'stretch' }}>
-          <button type="button" className="btn btn-ghost" style={{ flex: 1, fontSize: 12 }} onClick={onOpenApiKey}>
-            OpenRouter key
-          </button>
-          <button className="btn btn-primary" style={{ flex: 2 }} onClick={onNext}>
-            Start my visit&nbsp;<i className="fa-solid fa-arrow-right" aria-hidden="true" />
-          </button>
-        </div>
+        <button className="btn btn-primary" style={{ width: '100%' }} onClick={onNext}>
+          Start my visit&nbsp;<i className="fa-solid fa-arrow-right" aria-hidden="true" />
+        </button>
       </StickyBottom>
     </div>
   );
