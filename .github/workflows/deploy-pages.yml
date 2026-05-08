@@ -1,47 +1,50 @@
-# Deploy https://nory233.github.io/aiMuseum/
-# Settings → Pages → Build: GitHub Actions
-# Optional: Repository secret VITE_OPENROUTER_API_KEY (never commit real keys)
+# Publishes the Vite production build (dist/) to the gh-pages branch.
+# Live URL: https://nory233.github.io/aiMuseum/
+#
+# Repo Settings → Pages → Build and deployment:
+#   Source: "Deploy from a branch"
+#   Branch: gh-pages  /folder: / (root)
+#
+# Optional: Secrets → Actions → VITE_OPENROUTER_API_KEY (never commit keys)
+#
+# (The older actions/deploy-pages flow only works when Source is "GitHub Actions";
+# if Source is "main" / root, GitHub serves this repo's source index.html and the
+# app breaks because /src/main.jsx is not available on the host.)
 name: Deploy GitHub Pages
 
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
-  group: pages
+  group: github-pages-publish
   cancel-in-progress: true
 
 jobs:
-  build:
+  build-and-publish:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: npm
+
       - run: npm ci
-      - name: Build
+
+      - name: Build production site
         run: npm run build
         env:
-          # Add in repo Settings → Secrets → Actions (same name as .env locally).
-          # If unset, build succeeds; app uses demo mode without live AI.
           VITE_OPENROUTER_API_KEY: ${{ secrets.VITE_OPENROUTER_API_KEY }}
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist
 
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - uses: actions/deploy-pages@v4
-        id: deployment
+      - name: Push dist to gh-pages branch
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          enable_jekyll: false
