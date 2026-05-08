@@ -4,8 +4,9 @@
 //
 // (Filename kept as gemini.js to avoid touching imports elsewhere.)
 
-const rawKey = import.meta.env.VITE_OPENROUTER_API_KEY;
-const API_KEY = typeof rawKey === 'string' ? rawKey.trim() : '';
+export const OPENROUTER_STORAGE_KEY = 'aimuseum_openrouter_key';
+const OPENROUTER_CHANGE_EVENT = 'aimuseum-openrouter-change';
+
 const ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions';
 
 // Free models on OpenRouter (no credit card required).
@@ -17,11 +18,58 @@ const TEXT_MODEL   = 'openai/gpt-oss-120b:free';
 export const NATIONALMUSEUM_CONTEXT =
   "The visitor is at Nationalmuseum in Stockholm, Sweden: Sweden's national museum of fine art and applied arts (paintings, sculpture, works on paper, design, jewellery, ceramics, textiles, and major Nordic and European works). Prefer framing that fits that setting unless the scanned object clearly belongs elsewhere.";
 
-export const aiEnabled = API_KEY.length > 0;
+export function subscribeOpenRouterKey(cb) {
+  if (typeof window === 'undefined') return () => {};
+  const wrapped = () => cb();
+  window.addEventListener(OPENROUTER_CHANGE_EVENT, wrapped);
+  window.addEventListener('storage', wrapped);
+  return () => {
+    window.removeEventListener(OPENROUTER_CHANGE_EVENT, wrapped);
+    window.removeEventListener('storage', wrapped);
+  };
+}
+
+/** For useSyncExternalStore: full key string snapshot (omit from logs). */
+export function getOpenRouterKeySnapshotForStore() {
+  return getOpenRouterApiKey();
+}
+
+export function getOpenRouterApiKey() {
+  const fromEnv = import.meta.env.VITE_OPENROUTER_API_KEY;
+  const envTrim = typeof fromEnv === 'string' ? fromEnv.trim() : '';
+  if (envTrim) return envTrim;
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const s = localStorage.getItem(OPENROUTER_STORAGE_KEY);
+      return (s || '').trim();
+    }
+  } catch {}
+  return '';
+}
+
+export function isAiConfigured() {
+  return getOpenRouterApiKey().length > 0;
+}
+
+/** Save runtime key from the hosted app (stored only in your browser — never pushed to GitHub). */
+export function persistOpenRouterKey(keyOrEmpty) {
+  const t = typeof keyOrEmpty === 'string' ? keyOrEmpty.trim() : '';
+  try {
+    if (typeof localStorage === 'undefined') return;
+    if (t) localStorage.setItem(OPENROUTER_STORAGE_KEY, t);
+    else localStorage.removeItem(OPENROUTER_STORAGE_KEY);
+  } catch {/* ignore */}
+  if (typeof window !== 'undefined') {
+    try {
+      window.dispatchEvent(new Event(OPENROUTER_CHANGE_EVENT));
+    } catch {/* ignore */}
+  }
+}
 
 async function callOpenRouter({ messages, model, maxTokens = 600, temperature = 0.7 }) {
-  if (!API_KEY) {
-    throw new Error('Missing VITE_OPENROUTER_API_KEY. Copy .env.example to .env and add your key.');
+  const apiKey = getOpenRouterApiKey();
+  if (!apiKey) {
+    throw new Error('No OpenRouter API key: add VITE_OPENROUTER_API_KEY in .env (dev build) or use Settings in the app to save a key to this browser only.');
   }
 
   const body = {
@@ -35,7 +83,7 @@ async function callOpenRouter({ messages, model, maxTokens = 600, temperature = 
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${API_KEY}`,
+      'Authorization': `Bearer ${apiKey}`,
       // OpenRouter requires these for free models.
       'HTTP-Referer': typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173',
       'X-Title': 'Nationalmuseum AI Guide',

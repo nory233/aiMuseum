@@ -12,6 +12,7 @@ import {
   DetailedExplanationScreen,
   ImmersiveModeScreen,
   ContinueRouteScreen,
+  ApiKeyScreen,
 } from './components/Screens.jsx';
 
 /** Shown only when AI is unavailable (hosted build or demo scan). Not a museum identification. */
@@ -19,7 +20,7 @@ const DEMO_OBJECT = {
   name: 'Demo object',
   period: '',
   context: 'AI offline sample',
-  summary: 'This is placeholder content because no API key is available in this build.',
+  summary: 'Open Settings and paste an OpenRouter key (browser only), or use .env locally with npm run dev.',
 };
 
 function normalizeScannedObject(payload) {
@@ -81,7 +82,8 @@ export default function App() {
   return (
     <div className="app-shell" role="main" aria-label="Nationalmuseum AI Guide">
       <StatusBar />
-      {screen === 'home'       && <HomeScreen               onNext={() => go('setup')} />}
+      {screen === 'home'       && <HomeScreen               onNext={() => go('setup')} onOpenApiKey={() => go('apikey')} />}
+      {screen === 'apikey'    && <ApiKeyScreen               onBack={back} />}
       {screen === 'setup'      && <VisitSetupScreen          onBack={back} onNext={() => go('route')}
                                     setup={setup} setSetup={setSetup} />}
       {screen === 'route'      && <RouteReadyScreen          onBack={back} onNext={() => go('navigation')}

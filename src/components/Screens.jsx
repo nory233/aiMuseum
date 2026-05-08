@@ -1,12 +1,25 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import {
   AppBar, AICard, ProgressBar, MetaRow,
   SuccessBanner, StoneIcon, StickyBottom,
 } from './UI.jsx';
-import { aiEnabled, recognizeObject, generateExplanation } from '../lib/gemini.js';
+import {
+  subscribeOpenRouterKey,
+  getOpenRouterKeySnapshotForStore,
+  isAiConfigured,
+  persistOpenRouterKey,
+  recognizeObject,
+  generateExplanation,
+} from '../lib/gemini.js';
 
 // Screen 1: Home
-export function HomeScreen({ onNext }) {
+export function HomeScreen({ onNext, onOpenApiKey }) {
+  const aiReady = useSyncExternalStore(
+    subscribeOpenRouterKey,
+    () => isAiConfigured(),
+    () => false,
+  );
+
   return (
     <div className="screen">
       <div className="hero-section">
@@ -30,17 +43,86 @@ export function HomeScreen({ onNext }) {
           <span className="tag-pill">Object Recognition</span>
           <span className="tag-pill">Story Mode</span>
         </div>
-        {!aiEnabled && (
+        {!aiReady && (
           <p style={{ fontSize: 11, color: 'var(--stone)', marginTop: 16 }}>
-            Demo mode: add a free OpenRouter API key to <code>.env</code> for live AI.
+            Add your free OpenRouter API key (saved in this browser only) to enable live vision and text.{' '}
+            <button type="button" className="btn btn-ghost" style={{ marginTop: 8, width: '100%', fontSize: 12 }} onClick={onOpenApiKey}>
+              API key settings
+            </button>
           </p>
         )}
       </div>
       <StickyBottom>
-        <button className="btn btn-primary" onClick={onNext}>
-          Start my visit&nbsp;<i className="fa-solid fa-arrow-right" aria-hidden="true" />
-        </button>
+        <div className="row" style={{ alignItems: 'stretch' }}>
+          <button type="button" className="btn btn-ghost" style={{ flex: 1, fontSize: 12 }} onClick={onOpenApiKey}>
+            OpenRouter key
+          </button>
+          <button className="btn btn-primary" style={{ flex: 2 }} onClick={onNext}>
+            Start my visit&nbsp;<i className="fa-solid fa-arrow-right" aria-hidden="true" />
+          </button>
+        </div>
       </StickyBottom>
+    </div>
+  );
+}
+
+// Settings: API key (localStorage; never sent to our servers)
+export function ApiKeyScreen({ onBack }) {
+  const [input, setInput] = useState('');
+  const hasKey = useSyncExternalStore(
+    subscribeOpenRouterKey,
+    () => isAiConfigured(),
+    () => false,
+  );
+
+  const save = () => {
+    const t = input.trim();
+    if (!t) return;
+    persistOpenRouterKey(t);
+    setInput('');
+    setTimeout(() => onBack(), 400);
+  };
+
+  const clearKey = () => {
+    persistOpenRouterKey('');
+    setInput('');
+  };
+
+  return (
+    <div className="screen">
+      <AppBar title="OpenRouter API key" onBack={onBack} />
+      <div className="scroll-area">
+        <p className="body-para" style={{ marginBottom: 12 }}>
+          Create a key at{' '}
+          <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer">openrouter.ai/keys</a>
+          . It stays in this browser only (localStorage); the public GitHub build never contains your secret.
+        </p>
+        {hasKey && (
+          <p style={{ fontSize: 12, color: 'var(--stone)', marginBottom: 8 }}>
+            A key is already saved on this device. Paste a new key below to replace it, or use Clear.
+          </p>
+        )}
+        <label className="section-eye" htmlFor="or-key">Key (sk-or-v1-...)</label>
+        <input
+          id="or-key"
+          type="password"
+          autoComplete="off"
+          className="card"
+          style={{
+            width: '100%', marginTop: 8, marginBottom: 12, padding: 12, fontSize: 14,
+            border: '1px solid rgba(0,0,0,0.12)', borderRadius: 'var(--r-sm)', boxSizing: 'border-box',
+          }}
+          placeholder={hasKey ? 'paste new key…' : 'sk-or-v1-...'}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+        />
+        <div className="row row--mt">
+          <button type="button" className="btn btn-ghost" style={{ flex: 1 }} onClick={clearKey}>Clear</button>
+          <button type="button" className="btn btn-primary" style={{ flex: 2 }} onClick={save} disabled={!input.trim()}>
+            Save
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -232,25 +314,18 @@ export function ObjectDetailScreen({ onBack, onScan }) {
   );
 }
 
-function pickVideoRecorderMimeType() {
-  if (typeof MediaRecorder === 'undefined' || !MediaRecorder.isTypeSupported) return '';
-  const opts = [
-    'video/webm;codecs=vp9',
-    'video/webm;codecs=vp8',
-    'video/webm',
-  ];
-  return opts.find(MediaRecorder.isTypeSupported) || '';
-}
-
-// Screen 6: Scanning (camera + OpenRouter vision, with fake-scan fallback)
+// Screen 6: Scanning (camera + OpenRouter vision, with demo fallback)
 export function ScanningScreen({ onBack, onComplete }) {
+  const aiOn = useSyncExternalStore(
+    subscribeOpenRouterKey,
+    () => isAiConfigured(),
+    () => false,
+  );
   const [phase, setPhase] = useState('idle'); // idle | scanning | done | error
   const [errMsg, setErrMsg] = useState('');
   const [cameraReady, setCameraReady] = useState(false);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
-  const recorderRef = useRef(null);
-  const recorderChunksRef = useRef([]);
 
   // Acquire the camera stream once on mount.
   useEffect(() => {
@@ -288,9 +363,6 @@ export function ScanningScreen({ onBack, onComplete }) {
     startCamera();
     return () => {
       cancelled = true;
-      const mr = recorderRef.current;
-      if (mr && mr.state !== 'inactive') mr.stop();
-      recorderRef.current = null;
       streamRef.current?.getTracks().forEach(t => t.stop());
     };
   }, []);
@@ -330,52 +402,12 @@ export function ScanningScreen({ onBack, onComplete }) {
     return { base64, dataUrl };
   };
 
-  const startScanRecording = () => {
-    recorderChunksRef.current = [];
-    const stream = streamRef.current;
-    const mime = pickVideoRecorderMimeType();
-    if (!stream || !mime) return null;
-    try {
-      const mr = new MediaRecorder(stream, { mimeType: mime });
-      mr.ondataavailable = (e) => {
-        if (e.data.size) recorderChunksRef.current.push(e.data);
-      };
-      mr.start(250);
-      recorderRef.current = mr;
-      return mr;
-    } catch {
-      return null;
-    }
-  };
-
-  const finishScanRecording = () => new Promise((resolve) => {
-    const mr = recorderRef.current;
-    recorderRef.current = null;
-    if (!mr || mr.state === 'inactive') {
-      resolve(null);
-      return;
-    }
-    mr.onstop = () => {
-      const chunks = recorderChunksRef.current;
-      recorderChunksRef.current = [];
-      const type = (mr.mimeType && mr.mimeType.split(';')[0]) || 'video/webm';
-      const blob = new Blob(chunks, { type });
-      resolve(blob.size > 0 ? URL.createObjectURL(blob) : null);
-    };
-    mr.stop();
-  });
-
-  const abortScanRecording = async () => {
-    const url = await finishScanRecording();
-    if (url) URL.revokeObjectURL(url);
-  };
-
   const handleTap = async () => {
     if (phase !== 'idle') return;
     setPhase('scanning');
     setErrMsg('');
 
-    if (!aiEnabled) {
+    if (!aiOn) {
       setTimeout(() => setPhase('done'), 1200);
       setTimeout(() => onComplete(null), 2100);
       return;
@@ -388,24 +420,16 @@ export function ScanningScreen({ onBack, onComplete }) {
       return;
     }
 
-    startScanRecording();
-
     try {
       const ready = await waitForVideoReady();
       if (!ready) throw new Error('Camera not ready yet. Wait a moment.');
       const frame = captureFrame();
       if (!frame?.base64) throw new Error('Could not capture frame.');
       const obj = await recognizeObject(frame.base64, 'image/jpeg');
-      const scanVideoObjectUrl = await finishScanRecording();
       setPhase('done');
-      const payload = {
-        ...obj,
-        scanPreviewDataUrl: frame.dataUrl,
-        ...(scanVideoObjectUrl ? { scanVideoObjectUrl } : {}),
-      };
+      const payload = { ...obj, scanPreviewDataUrl: frame.dataUrl };
       setTimeout(() => onComplete(payload), 700);
     } catch (e) {
-      await abortScanRecording();
       setErrMsg(e.message || 'Recognition failed.');
       setPhase('error');
       setTimeout(() => { setPhase('idle'); }, 2200);
@@ -414,16 +438,16 @@ export function ScanningScreen({ onBack, onComplete }) {
 
   const messages = {
     idle: {
-      main: !aiEnabled
+      main: !aiOn
         ? 'Tap to scan (demo)'
         : (cameraReady ? 'Tap to scan' : 'Camera needed'),
-      sub: !aiEnabled
-        ? 'No API key — a sample object after scan.'
+      sub: !aiOn
+        ? 'Save an OpenRouter key in settings for live identification.'
         : (cameraReady ? 'Hold steady while AI identifies the object' : 'Allow camera access, then reload the page.'),
     },
     scanning: {
       main: cameraReady ? 'Analyzing...' : 'Waiting...',
-      sub: aiEnabled ? 'Sending photo to AI vision model' : 'Using demo identification',
+      sub: aiOn ? 'Sending photo to AI vision model' : 'Using demo identification',
     },
     done:     { main: 'Object identified!', sub: 'Opening object details...' },
     error:    { main: 'Scan failed', sub: errMsg || 'Try again' },
@@ -519,7 +543,7 @@ export function ModeSelectionScreen({ onBack, object, onQuick, onDetailed, onImm
             <div className="mode-title">
               Immersive mode <span className="mode-badge">Recommended</span>
             </div>
-            <div className="mode-desc">See a historical character demonstrate how the object was used.</div>
+            <div className="mode-desc">Listen to narration matched to what you scanned, over a subtle gallery ambience.</div>
           </div>
         </div>
       </div>
@@ -529,12 +553,14 @@ export function ModeSelectionScreen({ onBack, object, onQuick, onDetailed, onImm
 
 // Hook: load AI explanation with fallback
 function useAIExplanation({ object, mode, setup, fallback }) {
+  const keySig = useSyncExternalStore(subscribeOpenRouterKey, getOpenRouterKeySnapshotForStore, () => '');
+  const aiOn = keySig.length > 0;
   const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(aiEnabled);
+  const [loading, setLoading] = useState(() => keySig.length > 0);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (!aiEnabled) {
+    if (!aiOn) {
       setData(fallback);
       setLoading(false);
       return;
@@ -551,9 +577,8 @@ function useAIExplanation({ object, mode, setup, fallback }) {
         setLoading(false);
       });
     return () => { cancelled = true; };
-    // Intentionally depend on text fields tied to identification, not previews or blob URLs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [object?.name, object?.summary, object?.context, mode, setup?.interest, setup?.style]);
+  }, [object?.name, object?.summary, object?.context, mode, setup?.interest, setup?.style, keySig]);
 
   return { data, loading, error };
 }
@@ -575,9 +600,9 @@ function LoadingShimmer({ lines = 3 }) {
 export function QuickExplanationScreen({ onBack, onImmersive, object, setup }) {
   const fallback = {
     bullets: [
-      'Add VITE_OPENROUTER_API_KEY to a .env file and run npm run dev for live identification and explanations.',
-      'The public site on GitHub Pages is shipped without a key so your secret is not exposed in downloaded JavaScript.',
-      'You can still tap through the flow here to preview layout, camera, and immersive layout in demo mode.',
+      'Put your OpenRouter key in Settings (hosted site) or VITE_OPENROUTER_API_KEY in .env locally.',
+      'The static files on GitHub never contain your key; it stays only in localStorage / your machine.',
+      'After saving the key, scan again for live identification and tailored explanations.',
     ],
   };
   const { data, loading, error } = useAIExplanation({ object, mode: 'quick', setup, fallback });
@@ -622,8 +647,8 @@ export function QuickExplanationScreen({ onBack, onImmersive, object, setup }) {
 export function DetailedExplanationScreen({ onBack, onImmersive, object, setup }) {
   const fallback = {
     paragraphs: [
-      'This build is running without an OpenRouter API key, so explanations are not personalised from the AI.',
-      'For a real visit, run the project locally with .env configured, or host a small backend that holds the key securely instead of putting it in frontend code.',
+      'Detailed AI text needs an OpenRouter key: use Settings on the website (saved only in your browser) or .env during local development.',
+      'Ambient video in immersive mode is intentional gallery atmosphere; narration is tied to your scanned labels via the AI when a key is present.',
     ],
     meta: {
       period: '-',
@@ -674,16 +699,14 @@ export function DetailedExplanationScreen({ onBack, onImmersive, object, setup }
 export function ImmersiveModeScreen({ onBack, onContinue, object, setup }) {
   const videoRef = useRef(null);
   const [playing, setPlaying] = useState(false);
-  const scanVideoUrl = object?.scanVideoObjectUrl;
   const scanStillUrl = object?.scanPreviewDataUrl;
-  const hasScanVideo = Boolean(scanVideoUrl);
-  const hasScanStill = Boolean(scanStillUrl);
+  const ambientSrc = `${import.meta.env.BASE_URL}immersive-ambient.mp4`;
 
   const fallback = {
-    character: 'Museum visitor (demo)',
+    character: 'Museum storyteller',
     lines: [
-      '"Without an API key, the guide cannot invent a historical voice tailored to what you scanned."',
-      '"Run the app locally with your key to hear first-person dialogue generated for each object."',
+      '"The voice you hear follows the labels and history of the piece you scanned — not generic stock footage."',
+      '"For live AI narration, save your OpenRouter key in Settings; the visuals here stay atmospheric only."',
     ],
   };
   const { data, loading, error } = useAIExplanation({ object, mode: 'immersive', setup, fallback });
@@ -698,7 +721,7 @@ export function ImmersiveModeScreen({ onBack, onContinue, object, setup }) {
     } else {
       el.pause();
     }
-  }, [playing, hasScanVideo, scanStillUrl]);
+  }, [playing]);
 
   const togglePlay = () => setPlaying(p => !p);
 
@@ -717,79 +740,67 @@ export function ImmersiveModeScreen({ onBack, onContinue, object, setup }) {
     onBack();
   };
 
-  const showVideoControls = hasScanVideo || !hasScanStill;
-  const mediaBadge = hasScanVideo ? 'YOUR SCAN' : hasScanStill ? 'SCAN SNAP' : 'AMBIENT';
-  const immersiveLabel = hasScanVideo || hasScanStill ? 'Your scan' : 'Ambient backdrop';
-
   return (
     <div className="screen" style={{ background: 'var(--dark2)' }}>
       <AppBar title="Immersive Mode" onBack={onBack} />
       <div className="scroll-area" style={{ background: 'var(--cream)', paddingTop: 16 }}>
-        <span className="immersive-tag">{immersiveLabel}</span>
+        <span className="immersive-tag">Atmosphere</span>
         <div className="media-placeholder">
-          {hasScanVideo && (
-            <video
-              key={scanVideoUrl}
-              ref={videoRef}
-              className="immersive-video"
-              src={scanVideoUrl}
-              playsInline
-              loop
-              muted
-              preload="auto"
-              aria-label="Video recorded while you scanned this object"
-            />
-          )}
-          {!hasScanVideo && hasScanStill && (
-            <img
-              className="immersive-video"
-              src={scanStillUrl}
-              alt="Frame captured from your scan"
-            />
-          )}
-          {!hasScanVideo && !hasScanStill && (
-            <video
-              ref={videoRef}
-              className="immersive-video"
-              src={`${import.meta.env.BASE_URL}immersive-ambient.mp4`}
-              playsInline
-              loop
-              muted
-              preload="auto"
-              aria-label="Neutral ambient backdrop"
-            />
+          <video
+            key={ambientSrc}
+            ref={videoRef}
+            className="immersive-video"
+            src={ambientSrc}
+            playsInline
+            loop
+            muted
+            preload="auto"
+            aria-label="Ambient gallery atmosphere"
+          />
+          {scanStillUrl && (
+            <div
+              title="Still from your scan"
+              style={{
+                position: 'absolute',
+                bottom: 14,
+                left: 14,
+                width: 92,
+                height: 92,
+                borderRadius: 8,
+                overflow: 'hidden',
+                border: '2px solid rgba(255,255,255,0.9)',
+                boxShadow: '0 2px 14px rgba(0,0,0,0.35)',
+              }}
+            >
+              <img
+                src={scanStillUrl}
+                alt=""
+                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+              />
+            </div>
           )}
           <div className="media-play-overlay">
             <button
               type="button"
               className="play-btn"
               onClick={togglePlay}
-              disabled={!showVideoControls}
-              style={{ opacity: showVideoControls ? 1 : 0.35 }}
-              aria-label={playing ? 'Pause' : 'Play scene'}
-              aria-disabled={!showVideoControls}
+              aria-label={playing ? 'Pause' : 'Play atmosphere'}
             >
-              {!showVideoControls
-                ? <div className="play-icon" style={{ opacity: 0.4 }} />
-                : playing
-                  ? (
-                      <span style={{ display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'center' }}>
-                        <span style={{ width: 4, height: 14, background: 'white', borderRadius: 1 }} />
-                        <span style={{ width: 4, height: 14, background: 'white', borderRadius: 1 }} />
-                      </span>
-                    )
-                  : <div className="play-icon" />}
+              {playing
+                ? (
+                    <span style={{ display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'center' }}>
+                      <span style={{ width: 4, height: 14, background: 'white', borderRadius: 1 }} />
+                      <span style={{ width: 4, height: 14, background: 'white', borderRadius: 1 }} />
+                    </span>
+                  )
+                : <div className="play-icon" />}
             </button>
             <div className="media-label">{character}</div>
           </div>
-          <div className="media-live-badge">{mediaBadge}</div>
+          <div className="media-live-badge">ATMOSPHERE</div>
         </div>
         <p style={{ fontSize: 11, color: 'var(--stone)', marginBottom: 12, padding: '0 4px' }}>
-          {hasScanVideo
-            ? 'Video is captured from your camera while you scanned, so what you hear matches what you were looking at.'
-            : hasScanStill
-              ? 'Your browser could not save a clip, so immersive mode shows the exact frame sent for identification. Dialogue still follows what the AI inferred from that scan.'
-              : 'Video is optional ambient backdrop. The dialogue follows the detected object.'}
+          The looping film is ambient only (like gallery lighting/music). Dialogue on this screen is tailored to what you scanned. When available, a small inset shows your actual photo capture.
         </p>
         {loading ? (
           <div className="dialogue-card"><LoadingShimmer lines={3} /></div>
@@ -807,12 +818,8 @@ export function ImmersiveModeScreen({ onBack, onContinue, object, setup }) {
           </p>
         )}
         <div className="row" style={{ marginBottom: 12 }}>
-          <button type="button" className="btn btn-ctrl" onClick={replay} disabled={!showVideoControls}>
-            Replay
-          </button>
-          <button type="button" className="btn btn-ctrl" onClick={togglePlay} disabled={!showVideoControls}>
-            {playing ? 'Pause' : 'Play'}
-          </button>
+          <button type="button" className="btn btn-ctrl" onClick={replay}>Replay</button>
+          <button type="button" className="btn btn-ctrl" onClick={togglePlay}>{playing ? 'Pause' : 'Play'}</button>
           <button type="button" className="btn btn-ctrl" onClick={stopAndExit}>Exit</button>
         </div>
       </div>
