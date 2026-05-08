@@ -1,18 +1,18 @@
-# GitHub Pages on many repos still uses Source = main branch / (root).
-# Root index.html is only a redirect into docs/. The built app lives in docs/
-# with base URL /aiMuseum/docs/ so asset paths resolve correctly.
+# Root index.html redirects into web/. The production build lives under web/
+# with base URL /aiMuseum/web/ (GitHub Pages does not reliably serve a /docs folder
+# from repo root for project sites).
 #
-# Live site: https://nory233.github.io/aiMuseum/ (redirects to …/aiMuseum/docs/)
+# Live site: https://nory233.github.io/aiMuseum/ (redirects to …/aiMuseum/web/)
 #
 # Do not pass VITE_OPENROUTER_API_KEY into this build: the output is committed to
 # git and would leak the key. Use .env locally for development only.
-name: Publish site to docs
+name: Publish site to web
 
 on:
   push:
     branches: [main]
     paths-ignore:
-      - 'docs/**'
+      - 'web/**'
 
 permissions:
   contents: write
@@ -39,21 +39,21 @@ jobs:
       - name: Production build
         run: npm run build
 
-      - name: Sync dist into docs/
+      - name: Sync dist into web/
         run: |
-          rm -rf docs
-          mkdir -p docs
-          cp -r dist/* docs/
-          mv docs/app.html docs/index.html
+          rm -rf web
+          mkdir -p web
+          cp -r dist/* web/
+          mv web/app.html web/index.html
 
-      - name: Commit and push docs/
+      - name: Commit and push web/
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs
+          git add web
           if git diff --staged --quiet; then
-            echo "No changes under docs/"
+            echo "No changes under web/"
             exit 0
           fi
-          git commit -m "chore: update published site in docs [skip ci]"
+          git commit -m "chore: update published site in web [skip ci]"
           git push

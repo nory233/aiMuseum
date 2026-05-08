@@ -4,7 +4,7 @@ import react from '@vitejs/plugin-react'
 
 const appEntry = path.resolve(__dirname, 'app.html')
 
-/** GitHub serves this repo from main branch root; production static files live under /docs/. */
+/** GitHub Pages serves this repo from branch root; reserved /docs path breaks on project pages. Static app under /web/. */
 function devAppEntry() {
   return {
     name: 'dev-app-entry',
@@ -27,12 +27,12 @@ export default defineConfig(({ command }) => {
   const isBuild = command === 'build'
 
   return {
-    // Never bake local .env secrets into vite build output: docs/ is committed to git and
+    // Never bake local .env secrets into vite build output: web/ is committed to git and
     // GitHub Push Protection rejects OpenRouter-shaped strings in blobs.
     define: isBuild
       ? { 'import.meta.env.VITE_OPENROUTER_API_KEY': JSON.stringify('') }
       : {},
-    base: isBuild ? '/aiMuseum/docs/' : '/',
+    base: isBuild ? '/aiMuseum/web/' : '/',
     plugins: [react(), devAppEntry()],
     build: {
       rollupOptions: {
