@@ -25,11 +25,13 @@ function devAppEntry() {
 
 export default defineConfig(({ command }) => {
   const isBuild = command === 'build'
+  // Strip key when publishing static web/ (CI or explicit env). Local `npm run build` alone keeps .env.
+  const stripOpenRouterKeyFromBundle =
+    process.env.GITHUB_ACTIONS === 'true' || process.env.STRIP_OPENROUTER_KEY === '1'
 
   return {
-    // Never bake local .env secrets into vite build output: web/ is committed to git and
-    // GitHub Push Protection rejects OpenRouter-shaped strings in blobs.
-    define: isBuild
+    // Never bake repo secrets into static files uploaded from CI (push protection).
+    define: isBuild && stripOpenRouterKeyFromBundle
       ? { 'import.meta.env.VITE_OPENROUTER_API_KEY': JSON.stringify('') }
       : {},
     base: isBuild ? '/aiMuseum/web/' : '/',

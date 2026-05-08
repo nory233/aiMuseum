@@ -4,8 +4,8 @@
 #
 # Live site: https://nory233.github.io/aiMuseum/ (redirects to …/aiMuseum/web/)
 #
-# Do not pass VITE_OPENROUTER_API_KEY into this build: the output is committed to
-# git and would leak the key. Use .env locally for development only.
+# Public web/ bundle is built in Actions (GITHUB_ACTIONS=true): vite strips the API key there.
+# Local `vite build` + preview keeps .env unless you unset it.
 name: Publish site to web
 
 on:
@@ -38,6 +38,8 @@ jobs:
 
       - name: Production build
         run: npm run build
+        env:
+          STRIP_OPENROUTER_KEY: '1'
 
       - name: Sync dist into web/
         run: |

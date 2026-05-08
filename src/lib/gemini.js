@@ -107,7 +107,8 @@ Respond with ONLY a JSON object, no prose, no markdown fences. Exact shape:
   "summary": "<one sentence: what it is and what it was for, grounded in visible details>"
 }
 Use plain ASCII in all string values: hyphens for date ranges, no emoji, no en dash or em dash.
-If the image clearly does not show a plausible museum artefact or artwork, set name to "Unidentified" and explain briefly in summary.`;
+Everyday bottles, utensils, dishes, furniture, or tools belong in museums too: name them plainly from what you see.
+If nothing useful is visible in the photograph, set name to "Unidentified" and explain briefly in summary.`;
 
   const text = await callOpenRouter({
     model: VISION_MODEL,
