@@ -27,10 +27,10 @@ export function HomeScreen({ onNext, onOpenApiKey }) {
       <div className="hero-section">
         <div className="hero-deco" />
         <div className="hero-deco2" />
-        <div className="hero-eyebrow">Nationalmuseum, Stockholm</div>
+        <div className="hero-eyebrow">Stadsmuseet i Stockholm</div>
         <div className="hero-title">AI<br />Museum<br />Guide</div>
         <p className="hero-sub" style={{ marginTop: 10 }}>
-          Personalized storytelling<br />through Nationalmuseum
+          Personalized storytelling<br />through Stadsmuseet i Stockholm
         </p>
       </div>
       <div className="scroll-area" style={{ paddingTop: 24 }}>
@@ -38,7 +38,7 @@ export function HomeScreen({ onNext, onOpenApiKey }) {
         <div className="section-title">Discover exhibits tailored to you</div>
         <p className="body-para" style={{ marginBottom: 20 }}>
           Choose your time, interests, and preferred learning style, and we'll build
-          a personalised route through Nationalmuseum.
+          a personalised route through Stadsmuseet i Stockholm.
         </p>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
           <span className="tag-pill">Smart Routes</span>
@@ -191,7 +191,7 @@ export function RouteReadyScreen({ onBack, onNext, setup }) {
       <div className="scroll-area">
         <SuccessBanner icon={<i className="fa-solid fa-check" aria-hidden="true" />} title="Your route is ready" sub="Personalised for your visit today" />
         <AICard>
-          I've created a Nationalmuseum route focusing on {setup?.interest?.toLowerCase() || 'your interests'}.
+          I've created a Stadsmuseet i Stockholm route focusing on {setup?.interest?.toLowerCase() || 'your interests'}.
           It fits your {setup?.time || '90-minute'} window perfectly.
         </AICard>
         <div className="card" style={{ marginBottom: 12 }}>
@@ -266,7 +266,7 @@ export function NavigationScreen({ onBack, onNext }) {
           </p>
         </div>
         <AICard>
-          You're in Nationalmuseum near the textile and everyday life section. Head through the main hall
+          You're at Stadsmuseet i Stockholm near the textiles and everyday life area. Head through the main hall
           and turn left at the archway.
         </AICard>
         <div className="row row--mt">
@@ -520,7 +520,7 @@ export function ModeSelectionScreen({ onBack, object, onQuick, onDetailed, onImm
                 )}
           </div>
           <div>
-            <div className="recognized-title">{object?.name || 'Nationalmuseum artefact'}</div>
+            <div className="recognized-title">{object?.name || 'Stadsmuseet artefact'}</div>
             <div className="recognized-sub">{object?.context || 'Gallery object'}</div>
             <div className="recognized-tag">{object?.summary || ''}</div>
           </div>

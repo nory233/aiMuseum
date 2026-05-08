@@ -80,7 +80,7 @@ export default function App() {
   };
 
   return (
-    <div className="app-shell" role="main" aria-label="Nationalmuseum AI Guide">
+    <div className="app-shell" role="main" aria-label="Stadsmuseet i Stockholm AI Guide">
       <StatusBar />
       {screen === 'home'       && <HomeScreen               onNext={() => go('setup')} onOpenApiKey={() => go('apikey')} />}
       {screen === 'apikey'    && <ApiKeyScreen               onBack={back} />}

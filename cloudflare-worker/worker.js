@@ -34,7 +34,7 @@ export default {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${key}`,
         'HTTP-Referer': env.OPENROUTER_HTTP_REFERER || 'https://github.com',
-        'X-Title': env.OPENROUTER_X_TITLE || 'AI Museum Guide',
+        'X-Title': env.OPENROUTER_X_TITLE || 'Stadsmuseet i Stockholm AI Guide',
       },
       body,
     });

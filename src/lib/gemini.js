@@ -26,8 +26,8 @@ const VISION_MODEL = 'nvidia/nemotron-nano-12b-v2-vl:free';
 const TEXT_MODEL   = 'openai/gpt-oss-120b:free';
 
 /** Visitor app context: informs vision + text prompts. */
-export const NATIONALMUSEUM_CONTEXT =
-  "The visitor is at Nationalmuseum in Stockholm, Sweden: Sweden's national museum of fine art and applied arts (paintings, sculpture, works on paper, design, jewellery, ceramics, textiles, and major Nordic and European works). Prefer framing that fits that setting unless the scanned object clearly belongs elsewhere.";
+export const STADSMUSEET_STOCKHOLM_CONTEXT =
+  'The visitor is at Stadsmuseet i Stockholm (Stockholm City Museum), Sweden: a museum devoted to Stockholm\'s history and urban life (objects, photographs, models, interiors, crafts, everyday stories of the city and its inhabitants). Prefer framing that fits that setting unless the scanned object clearly belongs elsewhere.';
 
 export function subscribeOpenRouterKey(cb) {
   if (typeof window === 'undefined') return () => {};
@@ -126,7 +126,7 @@ async function callOpenRouter({ messages, model, maxTokens = 600, temperature = 
       'Authorization': `Bearer ${apiKey}`,
       // OpenRouter requires these for free models.
       'HTTP-Referer': typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173',
-      'X-Title': 'Nationalmuseum AI Guide',
+      'X-Title': 'Stadsmuseet i Stockholm AI Guide',
     },
     body: JSON.stringify(body),
   });
@@ -180,7 +180,7 @@ function extractJSON(text) {
 
 // Vision: identify a museum object from a captured image
 export async function recognizeObject(imageBase64, mimeType = 'image/jpeg') {
-  const prompt = `${NATIONALMUSEUM_CONTEXT}
+  const prompt = `${STADSMUSEET_STOCKHOLM_CONTEXT}
 
 You are a vision assistant for gallery visitors. Look ONLY at THIS photograph and describe what is actually visible.
 Do not assume the object is Nordic, medieval, or textile-related unless the image clearly shows that.
@@ -231,7 +231,7 @@ If nothing useful is visible in the photograph, set name to "Unidentified" and e
 const asciiHint = 'Use plain ASCII in every JSON string value: simple hyphen for ranges, no emoji, no en dash or em dash.';
 
 export async function generateExplanation({ object, mode, interest, style }) {
-  const objectName = object?.name || 'Nationalmuseum artefact';
+  const objectName = object?.name || 'Stadsmuseet artefact';
   const objectContext = object?.context || '';
   const objectSummary = object?.summary || '';
 
@@ -249,7 +249,7 @@ export async function generateExplanation({ object, mode, interest, style }) {
 
   if (mode === 'quick') {
     maxTokens = 700;
-    prompt = `${NATIONALMUSEUM_CONTEXT}
+    prompt = `${STADSMUSEET_STOCKHOLM_CONTEXT}
 
 You are a friendly in-gallery voice guide here. The visitor scanned: ${objectName}${objectContext ? ` (${objectContext})` : ''}.
 ${objectSummary ? `Known background: ${objectSummary}` : ''}
@@ -262,7 +262,7 @@ Respond with ONLY a JSON object, no prose, no markdown fences:
 Exactly 3 bullets, each at most 18 words.`;
   } else if (mode === 'detailed') {
     maxTokens = 1200;
-    prompt = `${NATIONALMUSEUM_CONTEXT}
+    prompt = `${STADSMUSEET_STOCKHOLM_CONTEXT}
 
 You are a curator writing for museum labels and visitors. They scanned: ${objectName}${objectContext ? ` (${objectContext})` : ''}.
 ${objectSummary ? `Known background: ${objectSummary}` : ''}
@@ -283,9 +283,9 @@ Respond with ONLY a JSON object, no prose, no markdown fences:
   } else if (mode === 'immersive') {
     maxTokens = 900;
     temperature = 0.85;
-    prompt = `${NATIONALMUSEUM_CONTEXT}
+    prompt = `${STADSMUSEET_STOCKHOLM_CONTEXT}
 
-You are writing a short immersive listening moment inside Nationalmuseum Stockholm.
+You are writing a short immersive listening moment at Stadsmuseet i Stockholm.
 Object: ${objectName}${objectContext ? ` (${objectContext})` : ''}.
 ${objectSummary ? `Background: ${objectSummary}` : ''}
 ${interestHint}

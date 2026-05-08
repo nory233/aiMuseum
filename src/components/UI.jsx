@@ -17,7 +17,7 @@ export function StatusBar() {
       <span className="status-bar__time">{clock}</span>
       <div className="status-bar__badge">
         <div className="status-dot" />
-        National Guide
+        Stadsmuseet Guide
       </div>
     </div>
   );
