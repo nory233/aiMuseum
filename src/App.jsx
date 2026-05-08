@@ -88,7 +88,7 @@ export default function App() {
                                     setup={setup} setSetup={setSetup} />}
       {screen === 'route'      && <RouteReadyScreen          onBack={back} onNext={() => go('navigation')}
                                     setup={setup} />}
-      {screen === 'navigation' && <NavigationScreen          onBack={back} onNext={() => go('object')} />}
+      {screen === 'navigation' && <NavigationScreen          onBack={back} onNext={() => go('object')} setup={setup} />}
       {screen === 'object'     && <ObjectDetailScreen        onBack={back} onScan={() => go('scanning')} />}
       {screen === 'scanning'   && <ScanningScreen            onBack={back} onComplete={commitScanResult} />}
       {screen === 'mode'       && <ModeSelectionScreen       onBack={back}
@@ -102,7 +102,7 @@ export default function App() {
                                     object={object} setup={setup} />}
       {screen === 'immersive'  && <ImmersiveModeScreen       onBack={back} onContinue={() => go('continue')}
                                     object={object} setup={setup} />}
-      {screen === 'continue'   && <ContinueRouteScreen       onBack={back} onNext={restart} onRestart={() => go('route')} />}
+      {screen === 'continue'   && <ContinueRouteScreen       onBack={back} onNext={restart} onRestart={() => go('route')} setup={setup} />}
     </div>
   );
 }

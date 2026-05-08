@@ -340,6 +340,23 @@ body {
 .immersive-tag { background: var(--gold-pale); color: var(--gold); font-size: 11px; letter-spacing: 0.09em; text-transform: uppercase; padding: 4px 12px; border-radius: var(--r-pill); display: inline-block; margin-bottom: 12px; font-weight: 500; }
 .media-placeholder { width: 100%; aspect-ratio: 16/9; background: var(--dark2); border-radius: var(--r-md); display: flex; flex-direction: column; align-items: center; justify-content: center; margin-bottom: 14px; position: relative; overflow: hidden; }
 .immersive-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.immersive-fallback-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background:
+    radial-gradient(ellipse 85% 60% at 50% 35%, rgba(62, 78, 72, 0.5) 0%, transparent 55%),
+    linear-gradient(165deg, #171c1b 0%, #252e2c 48%, #121816 100%);
+}
+@keyframes immersiveKenBurns {
+  0% { transform: scale(1) translate(0, 0); }
+  100% { transform: scale(1.09) translate(-1.2%, -0.8%); }
+}
+.immersive-scan-still {
+  animation: immersiveKenBurns 22s ease-in-out infinite alternate;
+  will-change: transform;
+}
 .media-play-overlay {
   position: absolute; inset: 0; z-index: 2;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -347,6 +364,9 @@ body {
   pointer-events: none;
 }
 .media-play-overlay .play-btn { pointer-events: auto; }
+.media-play-overlay--scan {
+  background: linear-gradient(180deg, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.5) 100%);
+}
 .media-play-overlay .media-label { margin-top: 12px; position: relative; z-index: 3; text-align: center; padding: 0 12px; }
 .play-btn { width: 56px; height: 56px; border-radius: 50%; background: var(--green); display: flex; align-items: center; justify-content: center; cursor: pointer; border: none; transition: transform var(--transition), background var(--transition); }
 .play-btn:hover { background: var(--green-light); transform: scale(1.06); }

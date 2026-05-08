@@ -13,6 +13,34 @@ import {
   generateExplanation,
   usesBuiltInGateway,
 } from '../lib/gemini.js';
+import { personalizedRoutePlan } from '../lib/routePlan.js';
+import { recordClipFromStream } from '../lib/scanClip.js';
+
+/**
+ * Floor plan asset: put `museum-map.svg`, `.png`, or `.jpg` in `/public`.
+ * GitHub Pages: served as `<BASE_URL>museum-map.svg` (not `/museum-map...` at domain root).
+ * Or set `VITE_MUSEUM_MAP_URL` to a full `https://...` URL or a `public/` filename (`venue-map.png`).
+ */
+function museumMapSrc() {
+  const env = (import.meta.env.VITE_MUSEUM_MAP_URL || '').trim();
+  const base = import.meta.env.BASE_URL || '/';
+  if (!env) return `${base}museum-map.svg`;
+  if (/^https?:\/\//i.test(env)) return env;
+  return `${base}${env.replace(/^\//, '')}`;
+}
+
+/**
+ * Optional muted loop for immersive mode when the visitor has no scan still.
+ * Leave unset for a neutral CSS-only gallery backdrop (no stock nature clip).
+ * Use a path under `public/` (e.g. immersive-ambient.mp4) or a full https URL.
+ */
+function immersiveAmbientVideoSrc() {
+  const env = (import.meta.env.VITE_IMMERSIVE_AMBIENT_URL || '').trim();
+  const base = import.meta.env.BASE_URL || '/';
+  if (!env) return '';
+  if (/^https?:\/\//i.test(env)) return env;
+  return `${base}${env.replace(/^\//, '')}`;
+}
 
 // Screen 1: Home
 export function HomeScreen({ onNext, onOpenApiKey }) {
@@ -185,6 +213,7 @@ export function VisitSetupScreen({ onBack, onNext, setup, setSetup }) {
 
 // Screen 3: Route Ready
 export function RouteReadyScreen({ onBack, onNext, setup }) {
+  const plan = personalizedRoutePlan(setup);
   return (
     <div className="screen">
       <AppBar title="Your route" onBack={onBack} />
@@ -202,11 +231,7 @@ export function RouteReadyScreen({ onBack, onNext, setup }) {
         <div className="section-eye" style={{ marginBottom: 8 }}>Your stops</div>
         <div className="card">
           <ul className="stop-list">
-            {[
-              { n: 1, title: 'Textile and everyday life', sub: 'Start here · ~25 min' },
-              { n: 2, title: 'Domestic tools',            sub: 'Second floor · ~30 min' },
-              { n: 3, title: 'Daily life stories',        sub: 'East wing · ~35 min' },
-            ].map(s => (
+            {plan.stops.map(s => (
               <li key={s.n} className="stop-item">
                 <div className="stop-num">{s.n}</div>
                 <div>
@@ -228,21 +253,21 @@ export function RouteReadyScreen({ onBack, onNext, setup }) {
 }
 
 // Screen 4: Navigation
-// Optional floor plan: add `public/museum-map.png` (or set VITE_MUSEUM_MAP_URL). Omitted if load fails.
-export function NavigationScreen({ onBack, onNext }) {
-  const mapSrc = (import.meta.env.VITE_MUSEUM_MAP_URL || '/museum-map.png').trim();
+export function NavigationScreen({ onBack, onNext, setup }) {
+  const plan = personalizedRoutePlan(setup);
+  const mapSrc = museumMapSrc().trim();
   const [mapHidden, setMapHidden] = useState(false);
 
   return (
     <div className="screen">
-      <AppBar title="Your next stop" subtitle="Stop 1 of 3" onBack={onBack} />
+      <AppBar title="Your next stop" subtitle={`Stop 1 of ${plan.totalStops}`} onBack={onBack} />
       <div className="scroll-area">
         {mapSrc && !mapHidden && (
           <div className="nav-map-wrap">
             <img
               className="nav-map-img"
               src={mapSrc}
-              alt="Museum floor map"
+              alt={plan.mapAlt}
               onError={() => setMapHidden(true)}
             />
           </div>
@@ -251,23 +276,22 @@ export function NavigationScreen({ onBack, onNext }) {
           <div className="map-dot" />
           <div style={{ flex: 1 }}>
             <div className="map-label">You are here</div>
-            <div className="map-val">Main entrance hall</div>
+            <div className="map-val">{plan.youAreHere}</div>
           </div>
           <div style={{ textAlign: 'right' }}>
             <div className="map-label">Destination</div>
-            <div className="map-val" style={{ color: 'var(--green)' }}>Section A3</div>
+            <div className="map-val" style={{ color: 'var(--green)' }}>{plan.destinationLabel}</div>
           </div>
         </div>
         <div className="card" style={{ marginBottom: 12 }}>
           <div className="section-eye" style={{ marginBottom: 4 }}>Next stop</div>
-          <div className="card__title" style={{ marginBottom: 6 }}>Textile and everyday life</div>
+          <div className="card__title" style={{ marginBottom: 6 }}>{plan.firstStopTitle}</div>
           <p className="body-para" style={{ color: 'var(--stone)' }}>
-            A good place to begin your story-based route through daily life in the collection.
+            {plan.firstStopSubtitle} Your preferences: {plan.interest}, {plan.style.toLowerCase()} ({plan.timeLabel} total).
           </p>
         </div>
         <AICard>
-          You're at Stadsmuseet i Stockholm near the textiles and everyday life area. Head through the main hall
-          and turn left at the archway.
+          {plan.navAiCard}
         </AICard>
         <div className="row row--mt">
           <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onNext}>View map</button>
@@ -424,13 +448,24 @@ export function ScanningScreen({ onBack, onComplete }) {
     }
 
     try {
+      const clipPromise = recordClipFromStream(streamRef.current, 3400);
       const ready = await waitForVideoReady();
       if (!ready) throw new Error('Camera not ready yet. Wait a moment.');
       const frame = captureFrame();
       if (!frame?.base64) throw new Error('Could not capture frame.');
       const obj = await recognizeObject(frame.base64, 'image/jpeg');
+      let scanVideoObjectUrl = '';
+      try {
+        scanVideoObjectUrl = await clipPromise;
+      } catch {
+        scanVideoObjectUrl = '';
+      }
       setPhase('done');
-      const payload = { ...obj, scanPreviewDataUrl: frame.dataUrl };
+      const payload = {
+        ...obj,
+        scanPreviewDataUrl: frame.dataUrl,
+        ...(scanVideoObjectUrl ? { scanVideoObjectUrl } : {}),
+      };
       setTimeout(() => onComplete(payload), 700);
     } catch (e) {
       setErrMsg(e.message || 'Recognition failed.');
@@ -446,7 +481,7 @@ export function ScanningScreen({ onBack, onComplete }) {
         : (cameraReady ? 'Tap to scan' : 'Camera needed'),
       sub: !aiOn
         ? 'Save an OpenRouter key in settings for live identification.'
-        : (cameraReady ? 'Hold steady while AI identifies the object' : 'Allow camera access, then reload the page.'),
+        : (cameraReady ? 'Hold steady — we capture a photo and a few seconds of video for immersive mode.' : 'Allow camera access, then reload the page.'),
     },
     scanning: {
       main: cameraReady ? 'Analyzing...' : 'Waiting...',
@@ -651,7 +686,7 @@ export function DetailedExplanationScreen({ onBack, onImmersive, object, setup }
   const fallback = {
     paragraphs: [
       'Detailed AI text needs an OpenRouter key: use Settings on the website (saved only in your browser) or .env during local development.',
-      'Ambient video in immersive mode is intentional gallery atmosphere; narration is tied to your scanned labels via the AI when a key is present.',
+      'Immersive mode uses your scan photo full-screen when available; an optional muted loop is only for sessions without a capture (set VITE_IMMERSIVE_AMBIENT_URL).',
     ],
     meta: {
       period: '-',
@@ -701,20 +736,38 @@ export function DetailedExplanationScreen({ onBack, onImmersive, object, setup }
 // Screen 10: Immersive Mode
 export function ImmersiveModeScreen({ onBack, onContinue, object, setup }) {
   const videoRef = useRef(null);
+  const scanClipRef = useRef(null);
   const [playing, setPlaying] = useState(false);
+  const [videoBroken, setVideoBroken] = useState(false);
+  const [scanClipBroken, setScanClipBroken] = useState(false);
+
+  const scanVideoUrl = object?.scanVideoObjectUrl;
   const scanStillUrl = object?.scanPreviewDataUrl;
-  const ambientSrc = `${import.meta.env.BASE_URL}immersive-ambient.mp4`;
+  const showScanClip = Boolean(scanVideoUrl) && !scanClipBroken;
+  const hasPersonalVisual = Boolean(showScanClip || scanStillUrl);
+  const immersiveTag = showScanClip ? 'Your capture' : scanStillUrl ? 'Your scan' : 'Atmosphere';
+  const immersiveBadge = showScanClip ? 'YOUR CAPTURE' : scanStillUrl ? 'YOUR SCAN' : 'AMBIENT';
+
+  const ambientVideoUrl = hasPersonalVisual ? '' : immersiveAmbientVideoSrc();
+  const showAmbientVideo = Boolean(ambientVideoUrl) && !videoBroken;
 
   const fallback = {
     character: 'Museum storyteller',
     lines: [
-      '"The voice you hear follows the labels and history of the piece you scanned — not generic stock footage."',
-      '"For live AI narration, save your OpenRouter key in Settings; the visuals here stay atmospheric only."',
+      '"When a short clip was recorded during your scan, it plays here — literally what you pointed the camera at."',
+      '"Otherwise you see your still photo with a gentle pan. The dialogue still follows the object AI recognised when available."',
     ],
   };
   const { data, loading, error } = useAIExplanation({ object, mode: 'immersive', setup, fallback });
   const character = data?.character || fallback.character;
   const lines = data?.lines || fallback.lines;
+
+  useEffect(() => {
+    if (!scanVideoUrl || scanClipBroken) return;
+    const el = scanClipRef.current;
+    if (!el) return;
+    el.play().catch(() => {});
+  }, [scanVideoUrl, scanClipBroken]);
 
   useEffect(() => {
     const el = videoRef.current;
@@ -728,7 +781,7 @@ export function ImmersiveModeScreen({ onBack, onContinue, object, setup }) {
 
   const togglePlay = () => setPlaying(p => !p);
 
-  const replay = () => {
+  const replayAmbient = () => {
     const el = videoRef.current;
     if (!(el instanceof HTMLVideoElement)) return;
     el.currentTime = 0;
@@ -738,72 +791,99 @@ export function ImmersiveModeScreen({ onBack, onContinue, object, setup }) {
     });
   };
 
+  const replayScanClip = () => {
+    const el = scanClipRef.current;
+    if (!(el instanceof HTMLVideoElement)) return;
+    el.currentTime = 0;
+    el.play().catch(() => {});
+  };
+
   const stopAndExit = () => {
     setPlaying(false);
     onBack();
   };
 
+  let heroHint;
+  if (showScanClip) {
+    heroHint = 'This short loop was recorded from your camera while you scanned — it shows the same view you had in the museum. Text below matches the recognised object when AI is available.';
+  } else if (scanStillUrl) {
+    heroHint = 'Your scan photo fills the screen with a slow pan. Recording a clip is not available on this device or capture — the image is still exactly what you framed.';
+  } else if (showAmbientVideo) {
+    heroHint = 'Optional ambient loop — use VITE_IMMERSIVE_AMBIENT_URL for your own muted MP4, or rely on the neutral backdrop when unset.';
+  } else {
+    heroHint = 'Neutral gallery-style backdrop when there is no scan. Add a muted clip via VITE_IMMERSIVE_AMBIENT_URL if you want motion without a personal capture.';
+  }
+
   return (
     <div className="screen" style={{ background: 'var(--dark2)' }}>
       <AppBar title="Immersive Mode" onBack={onBack} />
       <div className="scroll-area" style={{ background: 'var(--cream)', paddingTop: 16 }}>
-        <span className="immersive-tag">Atmosphere</span>
+        <span className="immersive-tag">{immersiveTag}</span>
         <div className="media-placeholder">
-          <video
-            key={ambientSrc}
-            ref={videoRef}
-            className="immersive-video"
-            src={ambientSrc}
-            playsInline
-            loop
-            muted
-            preload="auto"
-            aria-label="Ambient gallery atmosphere"
-          />
-          {scanStillUrl && (
-            <div
-              title="Still from your scan"
-              style={{
-                position: 'absolute',
-                bottom: 14,
-                left: 14,
-                width: 92,
-                height: 92,
-                borderRadius: 8,
-                overflow: 'hidden',
-                border: '2px solid rgba(255,255,255,0.9)',
-                boxShadow: '0 2px 14px rgba(0,0,0,0.35)',
-              }}
-            >
-              <img
-                src={scanStillUrl}
-                alt=""
-                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-              />
-            </div>
+          {showScanClip && (
+            <video
+              key={scanVideoUrl}
+              ref={scanClipRef}
+              className="immersive-video"
+              src={scanVideoUrl}
+              playsInline
+              loop
+              muted
+              preload="auto"
+              aria-label="Short clip recorded while you scanned the object"
+              onError={() => setScanClipBroken(true)}
+            />
           )}
-          <div className="media-play-overlay">
-            <button
-              type="button"
-              className="play-btn"
-              onClick={togglePlay}
-              aria-label={playing ? 'Pause' : 'Play atmosphere'}
-            >
-              {playing
-                ? (
-                    <span style={{ display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'center' }}>
-                      <span style={{ width: 4, height: 14, background: 'white', borderRadius: 1 }} />
-                      <span style={{ width: 4, height: 14, background: 'white', borderRadius: 1 }} />
-                    </span>
-                  )
-                : <div className="play-icon" />}
-            </button>
+          {!showScanClip && scanStillUrl && (
+            <img
+              className="immersive-video immersive-scan-still"
+              src={scanStillUrl}
+              alt="Your captured object from the gallery"
+            />
+          )}
+          {showAmbientVideo && (
+            <video
+              key={ambientVideoUrl}
+              ref={videoRef}
+              className="immersive-video"
+              src={ambientVideoUrl}
+              playsInline
+              loop
+              muted
+              preload="metadata"
+              aria-label="Ambient gallery atmosphere"
+              onError={() => setVideoBroken(true)}
+            />
+          )}
+          {!hasPersonalVisual && !showAmbientVideo && (
+            <div className="immersive-fallback-bg" aria-hidden />
+          )}
+          <div
+            className={`media-play-overlay${hasPersonalVisual ? ' media-play-overlay--scan' : ''}`}
+          >
+            {!hasPersonalVisual && showAmbientVideo && (
+              <button
+                type="button"
+                className="play-btn"
+                onClick={togglePlay}
+                aria-label={playing ? 'Pause' : 'Play atmosphere'}
+              >
+                {playing
+                  ? (
+                      <span style={{ display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'center' }}>
+                        <span style={{ width: 4, height: 14, background: 'white', borderRadius: 1 }} />
+                        <span style={{ width: 4, height: 14, background: 'white', borderRadius: 1 }} />
+                      </span>
+                    )
+                  : <div className="play-icon" />}
+              </button>
+            )}
             <div className="media-label">{character}</div>
           </div>
-          <div className="media-live-badge">ATMOSPHERE</div>
+          <div className="media-live-badge">{immersiveBadge}</div>
         </div>
         <p style={{ fontSize: 11, color: 'var(--stone)', marginBottom: 12, padding: '0 4px' }}>
-          The looping film is ambient only (like gallery lighting/music). Dialogue on this screen is tailored to what you scanned. When available, a small inset shows your actual photo capture.
+          {heroHint}
         </p>
         {loading ? (
           <div className="dialogue-card"><LoadingShimmer lines={3} /></div>
@@ -821,9 +901,23 @@ export function ImmersiveModeScreen({ onBack, onContinue, object, setup }) {
           </p>
         )}
         <div className="row" style={{ marginBottom: 12 }}>
-          <button type="button" className="btn btn-ctrl" onClick={replay}>Replay</button>
-          <button type="button" className="btn btn-ctrl" onClick={togglePlay}>{playing ? 'Pause' : 'Play'}</button>
-          <button type="button" className="btn btn-ctrl" onClick={stopAndExit}>Exit</button>
+          {showScanClip && (
+            <button type="button" className="btn btn-ctrl" onClick={replayScanClip}>Replay clip</button>
+          )}
+          {showAmbientVideo && (
+            <>
+              <button type="button" className="btn btn-ctrl" onClick={replayAmbient}>Replay</button>
+              <button type="button" className="btn btn-ctrl" onClick={togglePlay}>{playing ? 'Pause' : 'Play'}</button>
+            </>
+          )}
+          <button
+            type="button"
+            className="btn btn-ctrl"
+            onClick={stopAndExit}
+            style={showAmbientVideo || showScanClip ? undefined : { flex: 1 }}
+          >
+            Exit
+          </button>
         </div>
       </div>
       <StickyBottom>
@@ -836,7 +930,13 @@ export function ImmersiveModeScreen({ onBack, onContinue, object, setup }) {
 }
 
 // Screen 11: Continue Route
-export function ContinueRouteScreen({ onBack, onNext, onRestart }) {
+export function ContinueRouteScreen({ onBack, onNext, onRestart, setup }) {
+  const plan = personalizedRoutePlan(setup);
+  const [done, next, later] = plan.stops;
+  const pct = Math.min(99, Math.round(100 / Math.max(plan.totalStops, 1)));
+
+  const nextLine = next?.sub ? `Next · ${next.sub}` : 'Follow your route';
+
   return (
     <div className="screen">
       <AppBar title="Stop complete" onBack={onBack} />
@@ -846,8 +946,8 @@ export function ContinueRouteScreen({ onBack, onNext, onRestart }) {
           title="You've completed this stop"
           sub="Now you understand what it is, how it was used, and why it mattered"
         />
-        <ProgressBar pct={33} />
-        <p style={{ fontSize: 12, color: 'var(--stone)', marginBottom: 16 }}>Stop 1 of 3 complete</p>
+        <ProgressBar pct={pct} />
+        <p style={{ fontSize: 12, color: 'var(--stone)', marginBottom: 16 }}>Stop 1 of {plan.totalStops} complete</p>
         <div className="card" style={{ marginBottom: 12 }}>
           <ul className="stop-list">
             <li className="stop-item">
@@ -855,29 +955,32 @@ export function ContinueRouteScreen({ onBack, onNext, onRestart }) {
                 <i className="fa-solid fa-check" style={{ fontSize: 11, color: 'white' }} aria-hidden="true" />
               </div>
               <div>
-                <div className="stop-info__title stop-info__title--done">Textile and everyday life</div>
+                <div className="stop-info__title stop-info__title--done">{done?.title}</div>
                 <div className="stop-info__sub">Completed</div>
               </div>
             </li>
-            <li className="stop-item">
-              <div className="stop-num stop-num--active">2</div>
-              <div>
-                <div className="stop-info__title">Domestic tools</div>
-                <div className="stop-info__sub">Next · Second floor · ~30 min</div>
-              </div>
-            </li>
-            <li className="stop-item">
-              <div className="stop-num">3</div>
-              <div>
-                <div className="stop-info__title">Daily life stories</div>
-                <div className="stop-info__sub">East wing · ~35 min</div>
-              </div>
-            </li>
+            {next && (
+              <li className="stop-item">
+                <div className="stop-num stop-num--active">2</div>
+                <div>
+                  <div className="stop-info__title">{next.title}</div>
+                  <div className="stop-info__sub">{nextLine}</div>
+                </div>
+              </li>
+            )}
+            {later && (
+              <li className="stop-item">
+                <div className="stop-num">3</div>
+                <div>
+                  <div className="stop-info__title">{later.title}</div>
+                  <div className="stop-info__sub">{later.sub}</div>
+                </div>
+              </li>
+            )}
           </ul>
         </div>
         <AICard>
-          Continue your route to another story from everyday life. Domestic tools reveal
-          just as much about how people really lived.
+          Continue toward {next?.title || 'your next gallery'}—still within your {plan.timeLabel} plan, with a {plan.style.toLowerCase()} focus on {plan.interest.toLowerCase()}.
         </AICard>
         <div className="row row--mt">
           <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onRestart}>Full route</button>
