@@ -45,11 +45,6 @@ export function HomeScreen({ onNext, onOpenApiKey }) {
           <span className="tag-pill">Object Recognition</span>
           <span className="tag-pill">Story Mode</span>
         </div>
-        {usesBuiltInGateway() && (
-          <p style={{ fontSize: 11, color: 'var(--stone)', marginTop: 16 }}>
-            This build uses a server proxy for OpenRouter — your API key is not in the app bundle. You can use scan and AI on phones without pasting a key.
-          </p>
-        )}
         {!aiReady && (
           <p style={{ fontSize: 11, color: 'var(--stone)', marginTop: 16 }}>
             Add your free OpenRouter API key (saved in this browser only) to enable live vision and text.{' '}
