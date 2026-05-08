@@ -1,0 +1,10 @@
+# Deploy: cd cloudflare-worker && npx wrangler deploy
+# Secret (never commit): npx wrangler secret put OPENROUTER_API_KEY
+#
+# Optional plain vars (safe to set in dashboard):
+#   OPENROUTER_HTTP_REFERER — e.g. your GitHub Pages URL
+#   OPENROUTER_X_TITLE — app name for OpenRouter
+
+name = "aimuseum-openrouter"
+main = "worker.js"
+compatibility_date = "2024-11-01"

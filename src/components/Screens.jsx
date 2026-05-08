@@ -6,10 +6,12 @@ import {
 import {
   subscribeOpenRouterKey,
   getOpenRouterKeySnapshotForStore,
+  getOpenRouterApiKey,
   isAiConfigured,
   persistOpenRouterKey,
   recognizeObject,
   generateExplanation,
+  usesBuiltInGateway,
 } from '../lib/gemini.js';
 
 // Screen 1: Home
@@ -43,6 +45,11 @@ export function HomeScreen({ onNext, onOpenApiKey }) {
           <span className="tag-pill">Object Recognition</span>
           <span className="tag-pill">Story Mode</span>
         </div>
+        {usesBuiltInGateway() && (
+          <p style={{ fontSize: 11, color: 'var(--stone)', marginTop: 16 }}>
+            This build uses a server proxy for OpenRouter — your API key is not in the app bundle. You can use scan and AI on phones without pasting a key.
+          </p>
+        )}
         {!aiReady && (
           <p style={{ fontSize: 11, color: 'var(--stone)', marginTop: 16 }}>
             Add your free OpenRouter API key (saved in this browser only) to enable live vision and text.{' '}
@@ -69,11 +76,12 @@ export function HomeScreen({ onNext, onOpenApiKey }) {
 // Settings: API key (localStorage; never sent to our servers)
 export function ApiKeyScreen({ onBack }) {
   const [input, setInput] = useState('');
-  const hasKey = useSyncExternalStore(
+  const hasStoredOrEnvKey = useSyncExternalStore(
     subscribeOpenRouterKey,
-    () => isAiConfigured(),
+    () => getOpenRouterApiKey().length > 0,
     () => false,
   );
+  const proxyBuild = usesBuiltInGateway();
 
   const save = () => {
     const t = input.trim();
@@ -95,9 +103,14 @@ export function ApiKeyScreen({ onBack }) {
         <p className="body-para" style={{ marginBottom: 12 }}>
           Create a key at{' '}
           <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer">openrouter.ai/keys</a>
-          . It stays in this browser only (localStorage); the public GitHub build never contains your secret.
+          . Normally you do not need to paste anything here if the site uses a secure gateway (see deploy docs).
         </p>
-        {hasKey && (
+        {proxyBuild && (
+          <p style={{ fontSize: 12, color: 'var(--stone)', marginBottom: 12 }}>
+            Optional: paste a key only if you want to override the hosted proxy for this browser.
+          </p>
+        )}
+        {hasStoredOrEnvKey && (
           <p style={{ fontSize: 12, color: 'var(--stone)', marginBottom: 8 }}>
             A key is already saved on this device. Paste a new key below to replace it, or use Clear.
           </p>
@@ -112,7 +125,7 @@ export function ApiKeyScreen({ onBack }) {
             width: '100%', marginTop: 8, marginBottom: 12, padding: 12, fontSize: 14,
             border: '1px solid rgba(0,0,0,0.12)', borderRadius: 'var(--r-sm)', boxSizing: 'border-box',
           }}
-          placeholder={hasKey ? 'paste new key…' : 'sk-or-v1-...'}
+          placeholder={hasStoredOrEnvKey ? 'paste new key…' : 'sk-or-v1-...'}
           value={input}
           onChange={(e) => setInput(e.target.value)}
         />

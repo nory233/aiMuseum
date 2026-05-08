@@ -40,6 +40,8 @@ jobs:
         run: npm run build
         env:
           STRIP_OPENROUTER_KEY: '1'
+          # Public URL of Cloudflare worker (repo variable). Key stays in Cloudflare only.
+          VITE_OPENROUTER_GATEWAY_URL: ${{ vars.VITE_OPENROUTER_GATEWAY_URL }}
 
       - name: Sync dist into web/
         run: |

@@ -6,7 +6,10 @@
     "scripts": {
       "dev": "vite",
       "build": "vite build",
-      "preview": "vite preview"
+      "preview": "vite preview",
+      "worker:login": "cd cloudflare-worker && wrangler login",
+      "worker:secret": "cd cloudflare-worker && wrangler secret put OPENROUTER_API_KEY",
+      "worker:deploy": "cd cloudflare-worker && wrangler deploy"
     },
     "dependencies": {
       "react": "^18.2.0",
@@ -14,7 +17,8 @@
     },
     "devDependencies": {
       "@vitejs/plugin-react": "^4.2.0",
-      "vite": "^5.0.0"
+      "vite": "^5.0.0",
+      "wrangler": "^4.90.0"
     }
   }
   

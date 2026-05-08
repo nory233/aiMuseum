@@ -9,6 +9,17 @@ const OPENROUTER_CHANGE_EVENT = 'aimuseum-openrouter-change';
 
 const ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions';
 
+/** Public proxy URL (e.g. Cloudflare Worker). The real API key stays server-side only — safe for public repos. */
+function getOpenRouterGatewayUrl() {
+  const raw = import.meta.env.VITE_OPENROUTER_GATEWAY_URL;
+  return typeof raw === 'string' && raw.trim() ? raw.trim().replace(/\/$/, '') : '';
+}
+
+/** True when the production build includes VITE_OPENROUTER_GATEWAY_URL (no paste needed on phones). */
+export function usesBuiltInGateway() {
+  return getOpenRouterGatewayUrl().length > 0;
+}
+
 // Free models on OpenRouter (no credit card required).
 // Tested working as of 2026-05; if rate-limited, try other `:free` models.
 const VISION_MODEL = 'nvidia/nemotron-nano-12b-v2-vl:free';
@@ -29,8 +40,10 @@ export function subscribeOpenRouterKey(cb) {
   };
 }
 
-/** For useSyncExternalStore: full key string snapshot (omit from logs). */
+/** For useSyncExternalStore: changes when gateway, env key, or localStorage key changes. */
 export function getOpenRouterKeySnapshotForStore() {
+  const g = getOpenRouterGatewayUrl();
+  if (g) return `gateway:${g}`;
   return getOpenRouterApiKey();
 }
 
@@ -48,6 +61,7 @@ export function getOpenRouterApiKey() {
 }
 
 export function isAiConfigured() {
+  if (getOpenRouterGatewayUrl()) return true;
   return getOpenRouterApiKey().length > 0;
 }
 
@@ -67,9 +81,35 @@ export function persistOpenRouterKey(keyOrEmpty) {
 }
 
 async function callOpenRouter({ messages, model, maxTokens = 600, temperature = 0.7 }) {
+  const gateway = getOpenRouterGatewayUrl();
+  const bodyJson = JSON.stringify({
+    model,
+    messages,
+    temperature,
+    max_tokens: maxTokens,
+  });
+
+  if (gateway) {
+    const res = await fetch(gateway, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: bodyJson,
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`Gateway ${res.status}: ${errText.slice(0, 240)}`);
+    }
+    const data = await res.json();
+    const text = data?.choices?.[0]?.message?.content ?? '';
+    if (!text) throw new Error('Empty response from AI gateway.');
+    return text;
+  }
+
   const apiKey = getOpenRouterApiKey();
   if (!apiKey) {
-    throw new Error('No OpenRouter API key: add VITE_OPENROUTER_API_KEY in .env (dev build) or use Settings in the app to save a key to this browser only.');
+    throw new Error(
+      'No OpenRouter access: set VITE_OPENROUTER_GATEWAY_URL (hosted proxy), or VITE_OPENROUTER_API_KEY / Settings key.',
+    );
   }
 
   const body = {
